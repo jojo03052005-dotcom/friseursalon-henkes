@@ -1,0 +1,65 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="robots" content="noindex, nofollow">
+  <title>Terminverwaltung | Friseursalon Henkes</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=Playfair+Display:wght@600;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="styles.css">
+  <link rel="stylesheet" href="admin.css">
+</head>
+<body class="admin-page">
+  <header class="admin-header">
+    <div class="admin-brand">
+      <span class="brand-mark">H</span>
+      <div>
+        <strong>Friseursalon Henkes</strong>
+        <small>Terminverwaltung</small>
+      </div>
+    </div>
+    <nav class="admin-nav">
+      <a class="button ghost admin-ghost" href="/">Zur Website</a>
+      <button class="button primary" type="button" data-refresh>Neu laden</button>
+    </nav>
+  </header>
+
+  <main class="admin-main">
+    <section class="admin-intro">
+      <p class="section-kicker">Admin</p>
+      <h1>Alle Terminanfragen</h1>
+      <p class="admin-meta" data-admin-meta>Lade Termine …</p>
+    </section>
+
+    <p class="admin-alert" role="alert" data-admin-alert hidden></p>
+
+    <section class="admin-table-wrap" aria-label="Terminliste">
+      <div class="admin-table-scroll">
+        <table class="admin-table" data-appointments-table>
+          <thead>
+            <tr>
+              <th>Datum</th>
+              <th>Uhrzeit</th>
+              <th>Name</th>
+              <th>Telefon</th>
+              <th>E-Mail</th>
+              <th>Leistung</th>
+              <th>Eingegangen</th>
+              <th>Versandstatus</th>
+            </tr>
+          </thead>
+          <tbody data-appointments-body>
+            <tr>
+              <td colspan="8" class="admin-empty">Lade Termine …</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+    </section>
+  </main>
+
+  <script src="admin.js"></script>
+</body>
+</html>

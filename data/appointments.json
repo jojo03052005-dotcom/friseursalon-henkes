@@ -1,0 +1,90 @@
+[
+  {
+    "id": "812699c4-75cf-409c-9cf1-2eb1f2998509",
+    "name": "Joel Faulhaber",
+    "phone": "015114049363",
+    "date": "2026-05-20",
+    "time": "15:00",
+    "service": "Haarschnitt",
+    "createdAt": "2026-05-19T14:05:52.155Z",
+    "emailDraft": {
+      "subject": "Neue Terminanfrage: Joel Faulhaber – 2026-05-20",
+      "body": "Neue Terminanfrage ueber die Website\n\nName: Joel Faulhaber\nTelefon: 015114049363\nDatum: 2026-05-20\nUhrzeit: 15:00\nLeistung: Haarschnitt\nAngelegt am: 2026-05-19T14:05:52.155Z\n\nBitte Kunden telefonisch zur Bestaetigung kontaktieren.",
+      "mailto": "mailto:?subject=Neue%20Terminanfrage%3A%20Joel%20Faulhaber%20%E2%80%93%202026-05-20&body=Neue%20Terminanfrage%20ueber%20die%20Website%0A%0AName%3A%20Joel%20Faulhaber%0ATelefon%3A%20015114049363%0ADatum%3A%202026-05-20%0AUhrzeit%3A%2015%3A00%0ALeistung%3A%20Haarschnitt%0AAngelegt%20am%3A%202026-05-19T14%3A05%3A52.155Z%0A%0ABitte%20Kunden%20telefonisch%20zur%20Bestaetigung%20kontaktieren."
+    }
+  },
+  {
+    "id": "9c345586-2797-4dd5-bf1f-1b50617e4ec5",
+    "name": "Test",
+    "phone": "020941793",
+    "date": "2026-06-01",
+    "time": "10:00",
+    "service": "Haarschnitt",
+    "createdAt": "2026-05-19T14:11:36.214Z",
+    "emailDraft": {
+      "subject": "Neue Terminanfrage: Test – 2026-06-01",
+      "body": "Neue Terminanfrage ueber die Website\n\nName: Test\nTelefon: 020941793\nDatum: 2026-06-01\nUhrzeit: 10:00\nLeistung: Haarschnitt\nAngelegt am: 2026-05-19T14:11:36.214Z\n\nBitte Kunden telefonisch zur Bestaetigung kontaktieren.",
+      "mailto": "mailto:?subject=Neue%20Terminanfrage%3A%20Test%20%E2%80%93%202026-06-01&body=Neue%20Terminanfrage%20ueber%20die%20Website%0A%0AName%3A%20Test%0ATelefon%3A%20020941793%0ADatum%3A%202026-06-01%0AUhrzeit%3A%2010%3A00%0ALeistung%3A%20Haarschnitt%0AAngelegt%20am%3A%202026-05-19T14%3A11%3A36.214Z%0A%0ABitte%20Kunden%20telefonisch%20zur%20Bestaetigung%20kontaktieren."
+    }
+  },
+  {
+    "id": "93d6e604-3ad5-4b1e-b54d-46aa7eb8e19f",
+    "name": "Test",
+    "phone": "020941793",
+    "date": "2026-06-01",
+    "time": "10:00",
+    "service": "Haarschnitt",
+    "createdAt": "2026-05-19T14:11:48.323Z",
+    "emailDraft": {
+      "subject": "Neue Terminanfrage: Test – 2026-06-01",
+      "body": "Neue Terminanfrage ueber die Website\n\nName: Test\nTelefon: 020941793\nDatum: 2026-06-01\nUhrzeit: 10:00\nLeistung: Haarschnitt\nAngelegt am: 2026-05-19T14:11:48.323Z\n\nBitte Kunden telefonisch zur Bestaetigung kontaktieren.",
+      "mailto": "mailto:?subject=Neue%20Terminanfrage%3A%20Test%20%E2%80%93%202026-06-01&body=Neue%20Terminanfrage%20ueber%20die%20Website%0A%0AName%3A%20Test%0ATelefon%3A%20020941793%0ADatum%3A%202026-06-01%0AUhrzeit%3A%2010%3A00%0ALeistung%3A%20Haarschnitt%0AAngelegt%20am%3A%202026-05-19T14%3A11%3A48.323Z%0A%0ABitte%20Kunden%20telefonisch%20zur%20Bestaetigung%20kontaktieren."
+    }
+  },
+  {
+    "id": "69fb78d9-a618-4916-9320-cd3e4a93767e",
+    "name": "Joel Faulhaber",
+    "phone": "015114049363",
+    "email": "jojo03052005@gmail.com",
+    "date": "2026-05-22",
+    "time": "15:15",
+    "service": "Haarschnitt",
+    "createdAt": "2026-05-19T14:50:25.563Z",
+    "emailStatus": {
+      "customer": {
+        "sent": true,
+        "sentAt": "2026-05-19T14:50:27.071Z",
+        "error": null
+      },
+      "salon": {
+        "sent": true,
+        "sentAt": "2026-05-19T14:50:28.092Z",
+        "error": null
+      }
+    },
+    "emailDeliveryStatus": "sent"
+  },
+  {
+    "id": "364c1300-f17b-4511-898f-7b34e14307cb",
+    "name": "Fantatrinker1011",
+    "phone": "015114049363",
+    "email": "jojo03052005@gmail.com",
+    "date": "2026-05-22",
+    "time": "15:15",
+    "service": "Styling",
+    "createdAt": "2026-05-20T01:53:00.394Z",
+    "emailStatus": {
+      "customer": {
+        "sent": true,
+        "sentAt": "2026-05-20T01:53:01.880Z",
+        "error": null
+      },
+      "salon": {
+        "sent": true,
+        "sentAt": "2026-05-20T01:53:03.562Z",
+        "error": null
+      }
+    },
+    "emailDeliveryStatus": "sent"
+  }
+]
