@@ -27,8 +27,8 @@ const DEFAULT_ALLOWED_ORIGINS = [
 
 const ALLOWED_SERVICES = [
   "Haarschnitt",
-  "Faerbung",
-  "Straehnen",
+  "Färbung",
+  "Strähnen",
   "Styling",
   "Haarpflege",
 ];
@@ -102,26 +102,26 @@ function validateAppointment(payload) {
   const service = typeof payload.service === "string" ? payload.service.trim() : "";
 
   if (!name || name.length < 2) {
-    errors.push("Bitte geben Sie einen gueltigen Namen ein.");
+    errors.push("Bitte geben Sie einen gültigen Namen ein.");
   }
 
   if (!phone || phone.replace(/\D/g, "").length < 6) {
-    errors.push("Bitte geben Sie eine gueltige Telefonnummer ein.");
+    errors.push("Bitte geben Sie eine gültige Telefonnummer ein.");
   }
 
   if (!email) {
     errors.push("Bitte geben Sie Ihre E-Mail-Adresse ein.");
   } else if (!EMAIL_REGEX.test(email)) {
-    errors.push("Bitte geben Sie eine gueltige E-Mail-Adresse ein.");
+    errors.push("Bitte geben Sie eine gültige E-Mail-Adresse ein.");
   }
 
   const dateMatch = /^\d{4}-\d{2}-\d{2}$/.test(date);
   if (!dateMatch) {
-    errors.push("Bitte waehlen Sie ein gueltiges Datum.");
+    errors.push("Bitte wählen Sie ein gültiges Datum.");
   } else {
     const parsed = new Date(`${date}T12:00:00`);
     if (Number.isNaN(parsed.getTime())) {
-      errors.push("Das gewaehlte Datum ist ungueltig.");
+      errors.push("Das gewählte Datum ist ungültig.");
     } else {
       const today = new Date();
       today.setHours(0, 0, 0, 0);
@@ -133,11 +133,11 @@ function validateAppointment(payload) {
 
   const timeMatch = /^([01]\d|2[0-3]):([0-5]\d)$/.test(time);
   if (!timeMatch) {
-    errors.push("Bitte waehlen Sie eine gueltige Uhrzeit.");
+    errors.push("Bitte wählen Sie eine gültige Uhrzeit.");
   }
 
   if (!service || !ALLOWED_SERVICES.includes(service)) {
-    errors.push("Bitte waehlen Sie eine Leistung aus.");
+    errors.push("Bitte wählen Sie eine Leistung aus.");
   }
 
   if (errors.length > 0) {
@@ -233,7 +233,7 @@ app.post("/api/appointments", async (req, res) => {
       return res.status(201).json({
         success: true,
         message:
-          "Ihre Terminanfrage wurde gespeichert. Wir melden uns zur Bestaetigung bei Ihnen.",
+          "Ihre Terminanfrage wurde gespeichert. Wir melden uns zur Bestätigung bei Ihnen.",
         appointment: {
           id: appointment.id,
           name: appointment.name,
@@ -264,7 +264,7 @@ app.post("/api/appointments", async (req, res) => {
     res.status(201).json({
       success: true,
       message:
-        "Ihre Terminanfrage wurde erfolgreich gesendet. Sie erhalten in Kuerze eine Bestaetigungs-E-Mail.",
+        "Ihre Terminanfrage wurde erfolgreich gesendet. Sie erhalten in Kürze eine Bestätigungs-E-Mail.",
       appointment: {
         id: appointment.id,
         name: appointment.name,
@@ -291,7 +291,7 @@ app.post("/api/appointments", async (req, res) => {
 
 app.listen(PORT, () => {
   console.log("");
-  console.log("  Friseursalon Henkes – Server laeuft");
+  console.log("  Friseursalon Henkes – Server läuft");
   console.log("  ---------------------------------");
   console.log(`  Website:  http://localhost:${PORT}/`);
   console.log(`  Termin:   http://localhost:${PORT}/#termin`);

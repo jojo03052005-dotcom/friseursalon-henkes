@@ -65,7 +65,7 @@ function portIsSecure(port) {
 }
 
 /**
- * Formatiert ISO-Datum fuer E-Mails (deutsch).
+ * Formatiert ISO-Datum für E-Mails (deutsch).
  */
 function formatGermanDate(isoDate) {
   const date = new Date(`${isoDate}T12:00:00`);
@@ -136,7 +136,7 @@ function buildDetailsTable(rows) {
 }
 
 /**
- * HTML + Text fuer Kundenbestaetigung.
+ * HTML + Text für Kundenbestätigung.
  */
 function buildCustomerEmail(appointment) {
   const dateLabel = formatGermanDate(appointment.date);
@@ -147,9 +147,9 @@ function buildCustomerEmail(appointment) {
       Guten Tag <strong>${appointment.name}</strong>,
     </p>
     <p style="margin:0 0 20px;font-size:15px;line-height:1.65;color:#4b3028;">
-      vielen Dank fuer Ihre Terminanfrage. Wir haben Ihre Wunschzeit erhalten und melden uns zur endgueltigen Bestaetigung bei Ihnen.
+      vielen Dank für Ihre Terminanfrage. Wir haben Ihre Wunschzeit erhalten und melden uns zur endgültigen Bestätigung bei Ihnen.
     </p>
-    <p style="margin:0 0 8px;font-size:12px;letter-spacing:0.1em;text-transform:uppercase;color:#9f7630;font-weight:bold;">Ihre Terminuebersicht</p>
+    <p style="margin:0 0 8px;font-size:12px;letter-spacing:0.1em;text-transform:uppercase;color:#9f7630;font-weight:bold;">Ihre Terminübersicht</p>
     ${buildDetailsTable([
       ["Leistung", appointment.service],
       ["Datum", dateLabel],
@@ -163,16 +163,16 @@ function buildCustomerEmail(appointment) {
     </p>
     <p style="margin:0;font-size:15px;line-height:1.65;color:#4b3028;">
       Wir freuen uns auf Ihren Besuch!<br><br>
-      Herzliche Gruesse<br>
+      Herzliche Grüße<br>
       <strong>Ihr Team vom ${SALON.name}</strong>
     </p>`;
 
   const text = [
     `Guten Tag ${appointment.name},`,
     "",
-    "vielen Dank fuer Ihre Terminanfrage bei Friseursalon Henkes.",
+    "vielen Dank für Ihre Terminanfrage bei Friseursalon Henkes.",
     "",
-    "Ihre Terminuebersicht:",
+    "Ihre Terminübersicht:",
     `Leistung: ${appointment.service}`,
     `Datum: ${dateLabel}`,
     `Uhrzeit: ${appointment.time} Uhr`,
@@ -180,7 +180,7 @@ function buildCustomerEmail(appointment) {
     "",
     `Kontakt: ${SALON.phone}, ${SALON.address}, ${SALON.city}`,
     "",
-    "Herzliche Gruesse",
+    "Herzliche Grüße",
     `Ihr Team vom ${SALON.name}`,
   ].join("\n");
 
@@ -192,7 +192,7 @@ function buildCustomerEmail(appointment) {
 }
 
 /**
- * HTML + Text fuer Salon-Benachrichtigung.
+ * HTML + Text für Salon-Benachrichtigung.
  */
 function buildSalonEmail(appointment) {
   const dateLabel = formatGermanDate(appointment.date);
@@ -200,7 +200,7 @@ function buildSalonEmail(appointment) {
 
   const bodyContent = `
     <p style="margin:0 0 20px;font-size:15px;line-height:1.65;color:#4b3028;">
-      Es ist eine neue Terminanfrage ueber die Website eingegangen:
+      Es ist eine neue Terminanfrage über die Website eingegangen:
     </p>
     ${buildDetailsTable([
       ["Name", appointment.name],
@@ -212,11 +212,11 @@ function buildSalonEmail(appointment) {
       ["Angelegt am", new Date(appointment.createdAt).toLocaleString("de-DE")],
     ])}
     <p style="margin:0;font-size:14px;color:#77675c;">
-      Bitte den Kunden telefonisch oder per E-Mail zur Bestaetigung kontaktieren.
+      Bitte den Kunden telefonisch oder per E-Mail zur Bestätigung kontaktieren.
     </p>`;
 
   const text = [
-    "Neue Terminanfrage ueber die Website",
+    "Neue Terminanfrage über die Website",
     "",
     `Name: ${appointment.name}`,
     `Telefon: ${appointment.phone}`,
@@ -235,7 +235,7 @@ function buildSalonEmail(appointment) {
 }
 
 /**
- * Sendet Kunden- und Salon-E-Mail; gibt Versandstatus zurueck.
+ * Sendet Kunden- und Salon-E-Mail; gibt Versandstatus zurück.
  */
 async function sendAppointmentEmails(appointment) {
   const config = getMailConfig();
@@ -246,7 +246,7 @@ async function sendAppointmentEmails(appointment) {
     salon: { sent: false, sentAt: null, error: null },
   };
 
-  // Verbindung pruefen (fruehe, verstaendliche Fehlermeldung)
+  // Verbindung prüfen (frühe, verständliche Fehlermeldung)
   try {
     await transporter.verify();
   } catch (error) {
@@ -294,26 +294,26 @@ async function sendAppointmentEmails(appointment) {
 }
 
 /**
- * Übersetzt technische SMTP-Fehler in verstaendliche Hinweise.
+ * Übersetzt technische SMTP-Fehler in verständliche Hinweise.
  */
 function mapSmtpError(error) {
   const msg = error?.message || "Unbekannter Fehler";
 
   if (error?.code === "EAUTH" || /auth/i.test(msg)) {
-    return "SMTP-Anmeldung fehlgeschlagen. Pruefen Sie EMAIL_USER und EMAIL_PASS (Gmail: App-Passwort verwenden).";
+    return "SMTP-Anmeldung fehlgeschlagen. Prüfen Sie EMAIL_USER und EMAIL_PASS (Gmail: App-Passwort verwenden).";
   }
   if (/self signed|certificate/i.test(msg)) {
-    return "SMTP-Zertifikatsfehler. Pruefen Sie SMTP_HOST und SMTP_PORT.";
+    return "SMTP-Zertifikatsfehler. Prüfen Sie SMTP_HOST und SMTP_PORT.";
   }
   if (/ECONNREFUSED|ETIMEDOUT|ENOTFOUND/i.test(error?.code || msg)) {
-    return "SMTP-Server nicht erreichbar. Pruefen Sie Internetverbindung und SMTP-Einstellungen.";
+    return "SMTP-Server nicht erreichbar. Prüfen Sie Internetverbindung und SMTP-Einstellungen.";
   }
 
   return msg;
 }
 
 /**
- * Prueft ob E-Mail-Konfiguration vorhanden ist (ohne Verbindungstest).
+ * Prüft ob E-Mail-Konfiguration vorhanden ist (ohne Verbindungstest).
  */
 function isEmailConfigured() {
   return Boolean(

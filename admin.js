@@ -1,5 +1,5 @@
 /**
- * Admin: laedt alle Termine vom Backend und zeigt sie in einer Tabelle.
+ * Admin: lädt alle Termine vom Backend und zeigt sie in einer Tabelle.
  */
 
 const metaEl = document.querySelector("[data-admin-meta]");
@@ -55,7 +55,7 @@ const readJsonResponse = async (response) => {
 
   if (!contentType.includes("application/json")) {
     throw new Error(
-      "Das Backend antwortet noch nicht korrekt. Bitte pruefen Sie die Railway-Backend-URL."
+      "Das Backend antwortet noch nicht korrekt. Bitte prüfen Sie die Railway-Backend-URL."
     );
   }
 
@@ -63,7 +63,7 @@ const readJsonResponse = async (response) => {
 };
 
 /**
- * Zeigt Versandstatus fuer Kunden- und Salon-E-Mail.
+ * Zeigt Versandstatus für Kunden- und Salon-E-Mail.
  */
 const renderEmailStatus = (item) => {
   const status = item.emailStatus;
@@ -150,7 +150,7 @@ const loadAppointments = async () => {
     const isNetwork = error.message === "Failed to fetch";
     showAlert(
       isNetwork
-        ? "Server nicht erreichbar. Bitte „npm start“ im Projektordner ausfuehren."
+        ? "Server nicht erreichbar. Bitte „npm start“ im Projektordner ausführen."
         : error.message
     );
     tbody.innerHTML = `

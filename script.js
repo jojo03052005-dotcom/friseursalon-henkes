@@ -18,14 +18,14 @@ updateHeader();
 navToggle.addEventListener("click", () => {
   const isOpen = nav.classList.toggle("is-open");
   navToggle.setAttribute("aria-expanded", String(isOpen));
-  navToggle.setAttribute("aria-label", isOpen ? "Navigation schliessen" : "Navigation oeffnen");
+  navToggle.setAttribute("aria-label", isOpen ? "Navigation schließen" : "Navigation öffnen");
 });
 
 nav.addEventListener("click", (event) => {
   if (event.target.matches("a")) {
     nav.classList.remove("is-open");
     navToggle.setAttribute("aria-expanded", "false");
-    navToggle.setAttribute("aria-label", "Navigation oeffnen");
+    navToggle.setAttribute("aria-label", "Navigation öffnen");
   }
 });
 
@@ -43,7 +43,7 @@ const revealObserver = new IntersectionObserver(
 
 revealElements.forEach((element) => revealObserver.observe(element));
 
-/** Mindestdatum fuer Datumsfeld: heute */
+/** Mindestdatum für Datumsfeld: heute */
 const setMinBookingDate = () => {
   const dateInput = bookingForm?.querySelector('input[name="date"]');
   if (!dateInput) return;
@@ -74,7 +74,7 @@ const readJsonResponse = async (response) => {
 
   if (!contentType.includes("application/json")) {
     throw new Error(
-      "Das Backend antwortet noch nicht korrekt. Bitte pruefen Sie die Railway-Backend-URL."
+      "Das Backend antwortet noch nicht korrekt. Bitte prüfen Sie die Railway-Backend-URL."
     );
   }
 
@@ -117,7 +117,7 @@ bookingForm.addEventListener("submit", async (event) => {
     showFormFeedback(
       "success",
       result.message ||
-        "Ihre Terminanfrage wurde erfolgreich gesendet. Sie erhalten in Kuerze eine Bestaetigungs-E-Mail."
+        "Ihre Terminanfrage wurde erfolgreich gesendet. Sie erhalten in Kürze eine Bestätigungs-E-Mail."
     );
 
     bookingForm.reset();
