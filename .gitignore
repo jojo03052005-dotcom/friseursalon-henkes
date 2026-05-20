@@ -1,2 +1,14 @@
 node_modules/
 .env
+
+# Versehentlich eingecheckte portable Git-for-Windows-Installation.
+# Enthält binäre Terminfo-Dateien, die Railway/Nixpacks beim Build crashen lassen.
+Git/
+
+# Editor / Tooling
+.claude/
+.vscode/
+.idea/
+
+# Temporäre Datei vom atomic-write in writeAppointments()
+data/appointments.json.tmp
