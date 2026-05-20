@@ -1,8 +1,23 @@
 /**
- * E-Mail-Versand per Nodemailer (Gmail / Outlook SMTP)
+ * E-Mail-Versand per Resend HTTP-API.
+ *
+ * Hintergrund: Render-Free (und viele andere PaaS-Free-Tiers) blockieren
+ * ausgehende SMTP-Verbindungen, um Spam-Versand zu verhindern. Resend nutzt
+ * HTTPS und funktioniert daher auf praktisch jedem Host.
+ *
+ * Erforderliche Umgebungsvariablen:
+ *   RESEND_API_KEY  – API-Key aus https://resend.com (re_...)
+ *   SALON_EMAIL     – Empfänger für interne Salon-Benachrichtigungen
+ *
+ * Optionale Umgebungsvariablen:
+ *   EMAIL_FROM      – Absender (Default: "Friseursalon Henkes <onboarding@resend.dev>").
+ *                     Für eigene Domain bei Resend verifizieren und hier eintragen,
+ *                     z.B. 'Friseursalon Henkes <noreply@friseursalon-henkes.de>'.
+ *   EMAIL_USER      – Wenn gesetzt, wird die Adresse als Reply-To für die Kunden-Mail
+ *                     verwendet (so gehen Antworten an die echte Salon-Mailbox).
  */
 
-const nodemailer = require("nodemailer");
+const { Resend } = require("resend");
 
 const SALON = {
   name: "Friseursalon Henkes",
@@ -11,57 +26,27 @@ const SALON = {
   city: "45883 Gelsenkirchen",
 };
 
+const DEFAULT_FROM = `${SALON.name} <onboarding@resend.dev>`;
+
 /**
- * Liest SMTP-Konfiguration aus Umgebungsvariablen (.env).
+ * Liest Resend-Konfiguration aus Umgebungsvariablen.
  */
 function getMailConfig() {
-  const user = process.env.EMAIL_USER?.trim();
-  const pass = process.env.EMAIL_PASS?.trim();
+  const apiKey = process.env.RESEND_API_KEY?.trim();
   const salonEmail = process.env.SALON_EMAIL?.trim();
 
-  if (!user || !pass || !salonEmail) {
+  if (!apiKey || !salonEmail) {
     const error = new Error(
-      "E-Mail-Versand ist nicht konfiguriert. Bitte EMAIL_USER, EMAIL_PASS und SALON_EMAIL in der .env Datei eintragen."
+      "E-Mail-Versand ist nicht konfiguriert. Bitte RESEND_API_KEY und SALON_EMAIL setzen."
     );
     error.code = "EMAIL_NOT_CONFIGURED";
     throw error;
   }
 
-  const host =
-    process.env.SMTP_HOST?.trim() ||
-    (/@(outlook|hotmail|live|office365)\./i.test(user)
-      ? "smtp.office365.com"
-      : "smtp.gmail.com");
+  const from = process.env.EMAIL_FROM?.trim() || DEFAULT_FROM;
+  const replyTo = process.env.EMAIL_USER?.trim() || salonEmail;
 
-  const port = Number(process.env.SMTP_PORT || 587);
-
-  return {
-    user,
-    pass,
-    salonEmail,
-    host,
-    port,
-    from: `"${SALON.name}" <${user}>`,
-  };
-}
-
-/**
- * Erstellt einen wiederverwendbaren Nodemailer-Transporter.
- */
-function createTransporter(config) {
-  return nodemailer.createTransport({
-    host: config.host,
-    port: config.port,
-    secure: portIsSecure(config.port),
-    auth: {
-      user: config.user,
-      pass: config.pass,
-    },
-  });
-}
-
-function portIsSecure(port) {
-  return port === 465;
+  return { apiKey, salonEmail, from, replyTo };
 }
 
 /**
@@ -235,47 +220,42 @@ function buildSalonEmail(appointment) {
 }
 
 /**
- * Sendet Kunden- und Salon-E-Mail; gibt Versandstatus zurück.
+ * Sendet Kunden- und Salon-E-Mail über Resend; gibt Versandstatus zurück.
  */
 async function sendAppointmentEmails(appointment) {
   const config = getMailConfig();
-  const transporter = createTransporter(config);
+  const resend = new Resend(config.apiKey);
 
   const status = {
+    configured: true,
     customer: { sent: false, sentAt: null, error: null },
     salon: { sent: false, sentAt: null, error: null },
   };
 
-  // Verbindung prüfen (frühe, verständliche Fehlermeldung)
-  try {
-    await transporter.verify();
-  } catch (error) {
-    const message = mapSmtpError(error);
-    status.customer.error = message;
-    status.salon.error = message;
-    return status;
-  }
-
   const customerMail = buildCustomerEmail(appointment);
   const salonMail = buildSalonEmail(appointment);
 
+  // Kunden-Bestätigung
   try {
-    await transporter.sendMail({
+    const { error } = await resend.emails.send({
       from: config.from,
       to: appointment.email,
+      replyTo: config.replyTo,
       subject: customerMail.subject,
       text: customerMail.text,
       html: customerMail.html,
     });
+    if (error) throw error;
     status.customer.sent = true;
     status.customer.sentAt = new Date().toISOString();
   } catch (error) {
-    status.customer.error = mapSmtpError(error);
-    console.error("[E-Mail] Kunde:", error.message);
+    status.customer.error = mapEmailError(error);
+    console.error("[E-Mail] Kunde:", error?.message || error);
   }
 
+  // Salon-Benachrichtigung
   try {
-    await transporter.sendMail({
+    const { error } = await resend.emails.send({
       from: config.from,
       to: config.salonEmail,
       replyTo: appointment.email,
@@ -283,43 +263,46 @@ async function sendAppointmentEmails(appointment) {
       text: salonMail.text,
       html: salonMail.html,
     });
+    if (error) throw error;
     status.salon.sent = true;
     status.salon.sentAt = new Date().toISOString();
   } catch (error) {
-    status.salon.error = mapSmtpError(error);
-    console.error("[E-Mail] Salon:", error.message);
+    status.salon.error = mapEmailError(error);
+    console.error("[E-Mail] Salon:", error?.message || error);
   }
 
   return status;
 }
 
 /**
- * Übersetzt technische SMTP-Fehler in verständliche Hinweise.
+ * Übersetzt technische Resend-/Netzwerk-Fehler in verständliche Hinweise.
  */
-function mapSmtpError(error) {
-  const msg = error?.message || "Unbekannter Fehler";
+function mapEmailError(error) {
+  const name = error?.name || "";
+  const message = error?.message || String(error || "Unbekannter Fehler");
+  const combined = `${name} ${message}`;
 
-  if (error?.code === "EAUTH" || /auth/i.test(msg)) {
-    return "SMTP-Anmeldung fehlgeschlagen. Prüfen Sie EMAIL_USER und EMAIL_PASS (Gmail: App-Passwort verwenden).";
+  if (/invalid_api_key|unauthorized|forbidden|401|403/i.test(combined)) {
+    return "Resend-API-Key ungültig oder fehlt. Bitte RESEND_API_KEY in den Umgebungsvariablen prüfen.";
   }
-  if (/self signed|certificate/i.test(msg)) {
-    return "SMTP-Zertifikatsfehler. Prüfen Sie SMTP_HOST und SMTP_PORT.";
+  if (/validation_error.*from|from.*not.*verified|domain.*not.*verified|not allowed to send/i.test(combined)) {
+    return "Absender-Adresse bei Resend nicht verifiziert. Bitte EMAIL_FROM auf eine verifizierte Domain setzen oder Default (onboarding@resend.dev) verwenden.";
   }
-  if (/ECONNREFUSED|ETIMEDOUT|ENOTFOUND/i.test(error?.code || msg)) {
-    return "SMTP-Server nicht erreichbar. Prüfen Sie Internetverbindung und SMTP-Einstellungen.";
+  if (/rate.?limit|too.many.requests|429/i.test(combined)) {
+    return "Resend hat den Versand vorübergehend gedrosselt (Rate-Limit). Bitte später erneut versuchen.";
   }
-
-  return msg;
+  if (/ECONNREFUSED|ETIMEDOUT|ENOTFOUND|network|fetch failed/i.test(combined)) {
+    return "Verbindung zu Resend fehlgeschlagen. Bitte Internetverbindung und Status (status.resend.com) prüfen.";
+  }
+  return message;
 }
 
 /**
- * Prüft ob E-Mail-Konfiguration vorhanden ist (ohne Verbindungstest).
+ * Prüft ob E-Mail-Konfiguration vorhanden ist (ohne API-Call).
  */
 function isEmailConfigured() {
   return Boolean(
-    process.env.EMAIL_USER?.trim() &&
-      process.env.EMAIL_PASS?.trim() &&
-      process.env.SALON_EMAIL?.trim()
+    process.env.RESEND_API_KEY?.trim() && process.env.SALON_EMAIL?.trim()
   );
 }
 
