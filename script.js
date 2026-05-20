@@ -6,7 +6,7 @@ const bookingForm = document.querySelector("[data-booking-form]");
 const formMessage = document.querySelector("[data-form-message]");
 const submitBtn = document.querySelector("[data-submit-btn]");
 
-const API_BASE = window.location.origin;
+const API_BASE = window.HENKES_API_BASE || window.location.origin;
 
 const updateHeader = () => {
   header.classList.toggle("is-scrolled", window.scrollY > 24);
@@ -69,6 +69,18 @@ const showFormFeedback = (type, text) => {
   }
 };
 
+const readJsonResponse = async (response) => {
+  const contentType = response.headers.get("content-type") || "";
+
+  if (!contentType.includes("application/json")) {
+    throw new Error(
+      "Das Backend antwortet noch nicht korrekt. Bitte pruefen Sie die Railway-Backend-URL."
+    );
+  }
+
+  return response.json();
+};
+
 /**
  * Sendet Terminanfrage an das Express-Backend.
  */
@@ -96,7 +108,7 @@ bookingForm.addEventListener("submit", async (event) => {
       body: JSON.stringify(payload),
     });
 
-    const result = await response.json();
+    const result = await readJsonResponse(response);
 
     if (!response.ok || !result.success) {
       throw new Error(result.message || "Die Buchung konnte nicht gespeichert werden.");

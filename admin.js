@@ -7,7 +7,7 @@ const alertEl = document.querySelector("[data-admin-alert]");
 const tbody = document.querySelector("[data-appointments-body]");
 const refreshBtn = document.querySelector("[data-refresh]");
 
-const API_BASE = window.location.origin;
+const API_BASE = window.HENKES_API_BASE || window.location.origin;
 const COLSPAN = 8;
 
 const formatDate = (isoDate) => {
@@ -48,6 +48,18 @@ const showAlert = (message) => {
   }
   alertEl.hidden = false;
   alertEl.textContent = message;
+};
+
+const readJsonResponse = async (response) => {
+  const contentType = response.headers.get("content-type") || "";
+
+  if (!contentType.includes("application/json")) {
+    throw new Error(
+      "Das Backend antwortet noch nicht korrekt. Bitte pruefen Sie die Railway-Backend-URL."
+    );
+  }
+
+  return response.json();
 };
 
 /**
@@ -127,7 +139,7 @@ const loadAppointments = async () => {
 
   try {
     const response = await fetch(`${API_BASE}/api/appointments`);
-    const result = await response.json();
+    const result = await readJsonResponse(response);
 
     if (!response.ok || !result.success) {
       throw new Error(result.message || "Termine konnten nicht geladen werden.");

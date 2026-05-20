@@ -19,6 +19,11 @@ const PORT = process.env.PORT || 3000;
 const ROOT = __dirname;
 const DATA_DIR = path.join(ROOT, "data");
 const APPOINTMENTS_FILE = path.join(DATA_DIR, "appointments.json");
+const DEFAULT_ALLOWED_ORIGINS = [
+  "http://localhost:3000",
+  "http://127.0.0.1:3000",
+  "https://friseursalon-henkes-website.netlify.app",
+];
 
 const ALLOWED_SERVICES = [
   "Haarschnitt",
@@ -31,7 +36,39 @@ const ALLOWED_SERVICES = [
 const EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/i;
 
 app.use(express.json({ limit: "32kb" }));
+app.use((req, res, next) => {
+  const origin = req.headers.origin;
+  const allowedOrigins = new Set([
+    ...DEFAULT_ALLOWED_ORIGINS,
+    ...(process.env.ALLOWED_ORIGINS || "")
+      .split(",")
+      .map((item) => item.trim())
+      .filter(Boolean),
+  ]);
+
+  if (origin && allowedOrigins.has(origin)) {
+    res.setHeader("Access-Control-Allow-Origin", origin);
+  }
+
+  res.setHeader("Vary", "Origin");
+  res.setHeader("Access-Control-Allow-Methods", "GET,POST,OPTIONS");
+  res.setHeader("Access-Control-Allow-Headers", "Content-Type");
+
+  if (req.method === "OPTIONS") {
+    return res.sendStatus(204);
+  }
+
+  return next();
+});
 app.use(express.static(ROOT));
+
+app.get("/api/health", (_req, res) => {
+  res.json({
+    success: true,
+    service: "friseursalon-henkes-backend",
+    emailConfigured: isEmailConfigured(),
+  });
+});
 
 async function readAppointments() {
   try {
@@ -114,6 +151,8 @@ function validateAppointment(payload) {
 }
 
 function summarizeEmailStatus(emailStatus) {
+  if (emailStatus?.configured === false) return "not_configured";
+
   const customerOk = emailStatus?.customer?.sent;
   const salonOk = emailStatus?.salon?.sent;
 
@@ -137,14 +176,6 @@ app.get("/api/appointments", async (_req, res) => {
 /** POST /api/appointments */
 app.post("/api/appointments", async (req, res) => {
   try {
-    if (!isEmailConfigured()) {
-      return res.status(503).json({
-        success: false,
-        message:
-          "E-Mail-Versand ist nicht eingerichtet. Bitte tragen Sie EMAIL_USER, EMAIL_PASS und SALON_EMAIL in der .env Datei ein.",
-      });
-    }
-
     const validation = validateAppointment(req.body);
 
     if (!validation.ok) {
@@ -171,7 +202,21 @@ app.post("/api/appointments", async (req, res) => {
     appointments.push(appointment);
     await writeAppointments(appointments);
 
-    const emailStatus = await sendAppointmentEmails(appointment);
+    const emailStatus = isEmailConfigured()
+      ? await sendAppointmentEmails(appointment)
+      : {
+          configured: false,
+          customer: {
+            sent: false,
+            sentAt: null,
+            error: "E-Mail-Versand ist noch nicht eingerichtet.",
+          },
+          salon: {
+            sent: false,
+            sentAt: null,
+            error: "E-Mail-Versand ist noch nicht eingerichtet.",
+          },
+        };
     appointment.emailStatus = emailStatus;
     appointment.emailDeliveryStatus = summarizeEmailStatus(emailStatus);
 
@@ -183,6 +228,23 @@ app.post("/api/appointments", async (req, res) => {
 
     const customerOk = emailStatus.customer.sent;
     const salonOk = emailStatus.salon.sent;
+
+    if (emailStatus.configured === false) {
+      return res.status(201).json({
+        success: true,
+        message:
+          "Ihre Terminanfrage wurde gespeichert. Wir melden uns zur Bestaetigung bei Ihnen.",
+        appointment: {
+          id: appointment.id,
+          name: appointment.name,
+          email: appointment.email,
+          date: appointment.date,
+          time: appointment.time,
+          service: appointment.service,
+          emailStatus: appointment.emailStatus,
+        },
+      });
+    }
 
     if (!customerOk || !salonOk) {
       const details = [];
