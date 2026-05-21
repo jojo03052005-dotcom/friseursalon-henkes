@@ -638,7 +638,8 @@ h3 {
 }
 
 .booking-form input,
-.booking-form select {
+.booking-form select,
+.booking-form textarea {
   width: 100%;
   min-height: 48px;
   padding: 12px 14px;
@@ -649,10 +650,23 @@ h3 {
   font: inherit;
 }
 
+.booking-form textarea {
+  min-height: 96px;
+  resize: vertical;
+  line-height: 1.5;
+}
+
 .booking-form input:focus,
-.booking-form select:focus {
+.booking-form select:focus,
+.booking-form textarea:focus {
   outline: 3px solid rgba(202, 164, 93, 0.34);
   border-color: var(--gold-dark);
+}
+
+.booking-form .label-hint {
+  font-weight: 400;
+  color: var(--ash, #77675c);
+  font-size: 13px;
 }
 
 .booking-form-row {
