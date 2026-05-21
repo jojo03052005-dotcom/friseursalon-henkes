@@ -95,6 +95,7 @@ bookingForm.addEventListener("submit", async (event) => {
     date: formData.get("date")?.toString().trim() ?? "",
     time: formData.get("time")?.toString().trim() ?? "",
     service: formData.get("service")?.toString().trim() ?? "",
+    notes: formData.get("notes")?.toString().trim() ?? "",
   };
 
   showFormFeedback("loading", "Ihre Anfrage wird gesendet …");

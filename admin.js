@@ -8,7 +8,7 @@ const tbody = document.querySelector("[data-appointments-body]");
 const refreshBtn = document.querySelector("[data-refresh]");
 
 const API_BASE = window.HENKES_API_BASE || window.location.origin;
-const COLSPAN = 8;
+const COLSPAN = 9;
 
 const formatDate = (isoDate) => {
   const date = new Date(`${isoDate}T12:00:00`);
@@ -62,21 +62,51 @@ const readJsonResponse = async (response) => {
   return response.json();
 };
 
-/**
- * Zeigt Versandstatus für Kunden- und Salon-E-Mail.
- */
-const renderEmailStatus = (item) => {
-  const status = item.emailStatus;
+const formatReminderInfo = (status) => {
+  if (!status?.reminder) return "";
+  if (status.reminder.scheduled && status.reminder.scheduledFor) {
+    const when = new Date(status.reminder.scheduledFor);
+    if (!Number.isNaN(when.getTime())) {
+      const label = when.toLocaleString("de-DE", {
+        day: "2-digit",
+        month: "2-digit",
+        hour: "2-digit",
+        minute: "2-digit",
+      });
+      return `<span class="status-reminder" title="24h-Erinnerung an den Kunden">⏰ Reminder ${label}</span>`;
+    }
+  }
+  return "";
+};
 
+/**
+ * Zeigt Versandstatus + Storniert-Badge.
+ */
+const renderStatusCell = (item) => {
+  if (item.cancelled) {
+    const when = item.cancelledAt
+      ? new Date(item.cancelledAt).toLocaleString("de-DE", {
+          day: "2-digit",
+          month: "2-digit",
+          hour: "2-digit",
+          minute: "2-digit",
+        })
+      : "";
+    const title = when ? `Storniert am ${when}` : "Storniert";
+    return `<span class="status-badge status-cancelled" title="${escapeHtml(title)}">Storniert</span>`;
+  }
+
+  const status = item.emailStatus;
   if (!status) {
     return '<span class="status-badge status-unknown">Unbekannt</span>';
   }
 
   const customerOk = status.customer?.sent;
   const salonOk = status.salon?.sent;
+  const reminderHtml = formatReminderInfo(status);
 
   if (customerOk && salonOk) {
-    return '<span class="status-badge status-sent">Beide gesendet</span>';
+    return `<span class="status-badge status-sent">Beide gesendet</span>${reminderHtml}`;
   }
 
   if (customerOk || salonOk) {
@@ -85,7 +115,7 @@ const renderEmailStatus = (item) => {
     else parts.push(`Kunde: ${status.customer?.error || "fehlgeschlagen"}`);
     if (salonOk) parts.push("Salon OK");
     else parts.push(`Salon: ${status.salon?.error || "fehlgeschlagen"}`);
-    return `<span class="status-badge status-partial" title="${escapeHtml(parts.join(" | "))}">Teilweise</span>`;
+    return `<span class="status-badge status-partial" title="${escapeHtml(parts.join(" | "))}">Teilweise</span>${reminderHtml}`;
   }
 
   const error = status.customer?.error || status.salon?.error || "Versand fehlgeschlagen";
@@ -103,9 +133,13 @@ const renderRows = (appointments) => {
   }
 
   tbody.innerHTML = appointments
-    .map(
-      (item) => `
-        <tr>
+    .map((item) => {
+      const rowClass = item.cancelled ? ' class="is-cancelled"' : "";
+      const notesHtml = item.notes
+        ? `<div class="admin-notes">${escapeHtml(item.notes)}</div>`
+        : '<div class="admin-notes is-empty">—</div>';
+      return `
+        <tr${rowClass}>
           <td>${formatDate(item.date)}</td>
           <td>${item.time} Uhr</td>
           <td><strong>${escapeHtml(item.name)}</strong></td>
@@ -120,13 +154,17 @@ const renderRows = (appointments) => {
             </a>
           </td>
           <td>${escapeHtml(item.service)}</td>
+          <td>${notesHtml}</td>
           <td>${formatCreated(item.createdAt)}</td>
-          <td>${renderEmailStatus(item)}</td>
-        </tr>`
-    )
+          <td>${renderStatusCell(item)}</td>
+        </tr>`;
+    })
     .join("");
 
-  metaEl.textContent = `${appointments.length} Termin${appointments.length === 1 ? "" : "e"} – sortiert nach Wunschdatum`;
+  const cancelledCount = appointments.filter((item) => item.cancelled).length;
+  const activeCount = appointments.length - cancelledCount;
+  const cancelledNote = cancelledCount > 0 ? ` · ${cancelledCount} storniert` : "";
+  metaEl.textContent = `${activeCount} aktive Termin${activeCount === 1 ? "" : "e"}${cancelledNote} – sortiert nach Wunschdatum`;
 };
 
 const loadAppointments = async () => {

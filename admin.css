@@ -185,6 +185,44 @@
   border: 1px solid var(--line);
 }
 
+.status-cancelled {
+  color: #7a2e2e;
+  background: rgba(122, 46, 46, 0.14);
+  border: 1px solid rgba(122, 46, 46, 0.3);
+}
+
+.status-reminder {
+  display: inline-block;
+  margin-top: 6px;
+  font-size: 0.7rem;
+  color: var(--muted);
+  font-weight: 600;
+  letter-spacing: 0.02em;
+}
+
+.admin-table tr.is-cancelled td {
+  color: var(--muted);
+}
+
+.admin-table tr.is-cancelled td:not(:last-child) {
+  text-decoration: line-through;
+  text-decoration-color: rgba(122, 46, 46, 0.5);
+}
+
+.admin-notes {
+  max-width: 240px;
+  font-size: 0.85rem;
+  color: var(--espresso);
+  line-height: 1.4;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+.admin-notes.is-empty {
+  color: var(--muted);
+  font-style: italic;
+}
+
 @media (max-width: 640px) {
   .admin-header {
     padding-inline: 18px;
