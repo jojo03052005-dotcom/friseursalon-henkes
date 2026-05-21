@@ -367,6 +367,13 @@
     </div>
   </footer>
 
+  <script>
+    // Backend-URL fuer Terminbuchung. Auf dem Server liefert das Frontend
+    // einfach window.location.origin -- auf der Netlify-Seite muss explizit
+    // die Render-URL gesetzt werden, sonst landen Form-Submits auf Netlify
+    // und scheitern an HTML-404.
+    window.HENKES_API_BASE = "https://friseursalon-henkes-backend.onrender.com";
+  </script>
   <script src="script.js"></script>
 </body>
 </html>

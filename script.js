@@ -74,7 +74,7 @@ const readJsonResponse = async (response) => {
 
   if (!contentType.includes("application/json")) {
     throw new Error(
-      "Das Backend antwortet noch nicht korrekt. Bitte prüfen Sie die Railway-Backend-URL."
+      "Das Backend antwortet noch nicht korrekt. Bitte prüfen Sie die Backend-URL."
     );
   }
 
