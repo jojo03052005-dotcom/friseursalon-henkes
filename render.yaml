@@ -11,13 +11,23 @@ services:
         value: production
       - key: ALLOWED_ORIGINS
         value: https://friseursalon-henkes-website.netlify.app
-      - key: EMAIL_USER
+      # Pflicht: Resend API-Key. Im Render-Dashboard eintragen.
+      - key: RESEND_API_KEY
         sync: false
-      - key: EMAIL_PASS
-        sync: false
+      # Pflicht: Empfangsadresse fuer Salon-Benachrichtigungen.
       - key: SALON_EMAIL
         sync: false
-      - key: SMTP_HOST
+      # Optional: Absenderadresse fuer Kunden-Mails. Default ist
+      # "Friseursalon Henkes <onboarding@resend.dev>" (Sandbox).
+      # Empfehlung: Eigene Domain bei Resend verifizieren.
+      - key: EMAIL_FROM
         sync: false
-      - key: SMTP_PORT
+      # Optional: Reply-To-Adresse fuer Kunden-Mails. Wenn gesetzt,
+      # gehen Antworten an diese Adresse statt an SALON_EMAIL.
+      - key: EMAIL_USER
+        sync: false
+      # Optional: Basis-URL fuer Stornier-Links in Kunden-Mails.
+      # Sollte auf das deployed Backend zeigen, z.B.
+      # https://friseursalon-henkes-backend.onrender.com
+      - key: PUBLIC_BASE_URL
         sync: false
