@@ -368,6 +368,156 @@ function buildReminderEmail(appointment, baseUrl) {
 }
 
 /**
+ * Bestaetigung an den Kunden, nachdem der Salon den Termin bestaetigt hat.
+ */
+function buildConfirmedEmail(appointment, baseUrl) {
+  const dateLabel = formatGermanDate(appointment.date);
+  const subject = `Termin bestätigt – ${dateLabel}, ${appointment.time} Uhr`;
+  const cancelUrl = buildCancelUrl(baseUrl, appointment.cancelToken);
+
+  const detailRows = [
+    ["Leistung", escapeHtml(appointment.service)],
+    ["Wann", `${escapeHtml(dateLabel)}, ${escapeHtml(appointment.time)} Uhr`],
+    ["Wo", `${escapeHtml(SALON.address)}, ${escapeHtml(SALON.city)}`],
+  ];
+  if (appointment.notes) {
+    detailRows.push([
+      "Ihre Notiz",
+      `<em style="font-weight:normal;color:#4b3028;">${escapeHtml(appointment.notes)}</em>`,
+    ]);
+  }
+
+  const bodyContent = `
+    <p style="margin:0 0 16px;font-size:16px;line-height:1.65;color:#4b3028;">
+      Hallo <strong>${escapeHtml(appointment.name)}</strong>,
+    </p>
+    <p style="margin:0 0 20px;font-size:15px;line-height:1.7;color:#4b3028;">
+      kurz und gut: <strong>Ihr Termin steht.</strong> Wir freuen uns sehr auf Sie!
+    </p>
+    <p style="margin:0 0 8px;font-size:12px;letter-spacing:0.1em;text-transform:uppercase;color:#9f7630;font-weight:bold;">Ihr Termin</p>
+    ${buildDetailsTable(detailRows)}
+    <p style="margin:0 0 20px;font-size:15px;line-height:1.7;color:#4b3028;">
+      24 Stunden vorher schicken wir Ihnen automatisch nochmal eine kleine Erinnerung &mdash; damit kein Termin zwischen Tür und Angel vergessen wird.
+    </p>
+    <p style="margin:0 0 8px;font-size:12px;letter-spacing:0.1em;text-transform:uppercase;color:#9f7630;font-weight:bold;">Plan geändert?</p>
+    ${buildStornoCta(cancelUrl)}
+    <p style="margin:24px 0 0;font-size:15px;line-height:1.7;color:#4b3028;">
+      Bis bald in der Fürstinnenstraße!<br>
+      <strong>Ihr Team vom ${escapeHtml(SALON.name)}</strong>
+    </p>`;
+
+  const textLines = [
+    `Hallo ${appointment.name},`,
+    "",
+    "kurz und gut: Ihr Termin steht. Wir freuen uns sehr auf Sie!",
+    "",
+    "Ihr Termin:",
+    `  Leistung: ${appointment.service}`,
+    `  Wann: ${dateLabel}, ${appointment.time} Uhr`,
+    `  Wo: ${SALON.address}, ${SALON.city}`,
+  ];
+  if (appointment.notes) {
+    textLines.push(`  Ihre Notiz: ${appointment.notes}`);
+  }
+  textLines.push(
+    "",
+    "24 Stunden vorher bekommen Sie noch eine automatische Erinnerung von uns.",
+    "",
+    "Plan geändert?"
+  );
+  if (cancelUrl) {
+    textLines.push(`  Termin stornieren: ${cancelUrl}`);
+  }
+  textLines.push(
+    `  oder Anruf: ${SALON.phone}`,
+    "",
+    "Bis bald in der Fürstinnenstraße!",
+    `Ihr Team vom ${SALON.name}`
+  );
+
+  return {
+    subject,
+    html: wrapEmailHtml("Ihr Termin ist bestätigt", "Termin bestätigt", bodyContent),
+    text: textLines.join("\n"),
+  };
+}
+
+/**
+ * Absage an den Kunden, wenn der Salon die Anfrage nicht annehmen kann.
+ */
+function buildDeclineEmail(appointment, baseUrl) {
+  const dateLabel = formatGermanDate(appointment.date);
+  const subject = `Ihre Terminanfrage – leider nicht möglich`;
+  const bookingUrl = baseUrl ? `${baseUrl.replace(/\/$/, "")}/#termin` : "";
+
+  const detailRows = [
+    ["Leistung", escapeHtml(appointment.service)],
+    ["Gewünscht war", `${escapeHtml(dateLabel)}, ${escapeHtml(appointment.time)} Uhr`],
+  ];
+
+  const newRequestCta = bookingUrl
+    ? `
+      <table role="presentation" cellspacing="0" cellpadding="0" style="margin:8px 0 16px;">
+        <tr>
+          <td style="background:#4b3028;border-radius:4px;">
+            <a href="${escapeHtml(bookingUrl)}" style="display:inline-block;padding:12px 22px;color:#fffaf0;text-decoration:none;font-size:14px;font-weight:bold;letter-spacing:0.02em;">Neuen Termin anfragen</a>
+          </td>
+        </tr>
+      </table>
+      <p style="margin:0 0 8px;font-size:13px;line-height:1.6;color:#77675c;">
+        … oder direkt anrufen: <a href="tel:${SALON.phoneTel}" style="color:#9f7630;text-decoration:none;">${SALON.phone}</a>
+      </p>`
+    : `
+      <p style="margin:0 0 12px;font-size:14px;line-height:1.65;color:#77675c;">
+        Am schnellsten geht's per Anruf:
+        <a href="tel:${SALON.phoneTel}" style="color:#9f7630;text-decoration:none;font-weight:bold;">${SALON.phone}</a>
+      </p>`;
+
+  const bodyContent = `
+    <p style="margin:0 0 16px;font-size:16px;line-height:1.65;color:#4b3028;">
+      Hallo <strong>${escapeHtml(appointment.name)}</strong>,
+    </p>
+    <p style="margin:0 0 20px;font-size:15px;line-height:1.7;color:#4b3028;">
+      vielen Dank für Ihre Anfrage. Leider können wir Ihren Wunschtermin nicht anbieten &mdash; an dem Tag ist bei uns leider schon alles dicht.
+    </p>
+    <p style="margin:0 0 8px;font-size:12px;letter-spacing:0.1em;text-transform:uppercase;color:#9f7630;font-weight:bold;">Ihre Anfrage</p>
+    ${buildDetailsTable(detailRows)}
+    <p style="margin:0 0 12px;font-size:15px;line-height:1.7;color:#4b3028;">
+      Wir würden uns sehr freuen, einen anderen Termin für Sie zu finden &mdash; oft klappt's nur ein paar Tage verschoben, oder zu einer anderen Uhrzeit.
+    </p>
+    ${newRequestCta}
+    <p style="margin:24px 0 0;font-size:15px;line-height:1.7;color:#4b3028;">
+      Bis bald hoffentlich!<br>
+      <strong>Ihr Team vom ${escapeHtml(SALON.name)}</strong>
+    </p>`;
+
+  const textLines = [
+    `Hallo ${appointment.name},`,
+    "",
+    "vielen Dank für Ihre Anfrage.",
+    `Leider können wir den Wunschtermin am ${dateLabel} um ${appointment.time} Uhr nicht anbieten.`,
+    "",
+    "Wir würden uns sehr freuen, einen anderen Termin für Sie zu finden – oft klappt's nur ein paar Tage verschoben, oder zu einer anderen Uhrzeit.",
+    "",
+  ];
+  if (bookingUrl) {
+    textLines.push(`Neuen Termin anfragen: ${bookingUrl}`);
+  }
+  textLines.push(
+    `Oder direkt anrufen: ${SALON.phone}`,
+    "",
+    "Bis bald hoffentlich!",
+    `Ihr Team vom ${SALON.name}`
+  );
+
+  return {
+    subject,
+    html: wrapEmailHtml("Anfrage leider nicht möglich", "Terminanfrage", bodyContent),
+    text: textLines.join("\n"),
+  };
+}
+
+/**
  * Salon-Benachrichtigung bei neuer Anfrage.
  */
 function buildSalonEmail(appointment) {
@@ -469,7 +619,13 @@ function buildCancellationEmail(appointment) {
 }
 
 /**
- * Sendet Kunden- und Salon-Mail sofort + plant 24h-Erinnerung via Resend.
+ * Sendet die Eingangs-Mails fuer eine neue Terminanfrage:
+ *   - "Anfrage erhalten" an den Kunden
+ *   - Benachrichtigung an den Salon
+ *
+ * Die 24h-Erinnerung wird hier NICHT mehr geplant. Sie wird erst beim
+ * Bestaetigen ausgeloest (siehe sendConfirmationEmail), damit nicht-
+ * bestaetigte Termine keine Reminder verschicken.
  */
 async function sendAppointmentEmails(appointment, baseUrl) {
   const config = getMailConfig();
@@ -480,18 +636,20 @@ async function sendAppointmentEmails(appointment, baseUrl) {
     configured: true,
     customer: { sent: false, sentAt: null, error: null },
     salon: { sent: false, sentAt: null, error: null },
+    // Feld bleibt aus Daten-Kompatibilitaets-Gruenden erhalten; der eigentliche
+    // Plan-Schritt findet jetzt beim Bestaetigen statt.
     reminder: {
       scheduled: false,
       scheduledFor: null,
       emailId: null,
-      error: null,
+      error: "Wird erst beim Bestätigen des Termins geplant.",
     },
   };
 
   const customerMail = buildCustomerEmail(appointment, effectiveBaseUrl);
   const salonMail = buildSalonEmail(appointment);
 
-  // 1. Kunden-Bestaetigung (sofort)
+  // 1. Kunden-Eingangs-Mail (sofort)
   try {
     const { error } = await resend.emails.send({
       from: config.from,
@@ -527,7 +685,50 @@ async function sendAppointmentEmails(appointment, baseUrl) {
     console.error("[E-Mail] Salon:", error?.message || error);
   }
 
-  // 3. 24h-Erinnerung (geplant)
+  return status;
+}
+
+/**
+ * Sendet die Bestaetigungs-Mail an den Kunden und plant die 24h-Erinnerung
+ * via Resend `scheduledAt`. Wird vom Admin-Endpoint aufgerufen, sobald der
+ * Salon den Termin bestaetigt.
+ */
+async function sendConfirmationEmail(appointment, baseUrl) {
+  const config = getMailConfig();
+  const resend = new Resend(config.apiKey);
+  const effectiveBaseUrl = config.publicBaseUrl || baseUrl || "";
+
+  const status = {
+    customer: { sent: false, sentAt: null, error: null },
+    reminder: {
+      scheduled: false,
+      scheduledFor: null,
+      emailId: null,
+      error: null,
+    },
+  };
+
+  const confirmedMail = buildConfirmedEmail(appointment, effectiveBaseUrl);
+
+  // 1. Bestaetigungs-Mail
+  try {
+    const { error } = await resend.emails.send({
+      from: config.from,
+      to: appointment.email,
+      replyTo: config.replyTo,
+      subject: confirmedMail.subject,
+      text: confirmedMail.text,
+      html: confirmedMail.html,
+    });
+    if (error) throw error;
+    status.customer.sent = true;
+    status.customer.sentAt = new Date().toISOString();
+  } catch (error) {
+    status.customer.error = mapEmailError(error);
+    console.error("[Bestaetigung] Kunde:", error?.message || error);
+  }
+
+  // 2. 24h-Erinnerung planen
   const { scheduledFor, skipReason } = getReminderTime(appointment);
   if (!scheduledFor) {
     status.reminder.error = skipReason;
@@ -549,8 +750,43 @@ async function sendAppointmentEmails(appointment, baseUrl) {
       status.reminder.emailId = data?.id || null;
     } catch (error) {
       status.reminder.error = mapEmailError(error);
-      console.error("[E-Mail] Erinnerung-Planung:", error?.message || error);
+      console.error("[Bestaetigung] Erinnerung-Planung:", error?.message || error);
     }
+  }
+
+  return status;
+}
+
+/**
+ * Sendet die Absage-Mail an den Kunden. Wird vom Admin-Endpoint aufgerufen,
+ * wenn der Salon eine Anfrage nicht annehmen kann.
+ */
+async function sendDeclineEmail(appointment, baseUrl) {
+  const config = getMailConfig();
+  const resend = new Resend(config.apiKey);
+  const effectiveBaseUrl = config.publicBaseUrl || baseUrl || "";
+
+  const status = {
+    customer: { sent: false, sentAt: null, error: null },
+  };
+
+  const declineMail = buildDeclineEmail(appointment, effectiveBaseUrl);
+
+  try {
+    const { error } = await resend.emails.send({
+      from: config.from,
+      to: appointment.email,
+      replyTo: config.replyTo,
+      subject: declineMail.subject,
+      text: declineMail.text,
+      html: declineMail.html,
+    });
+    if (error) throw error;
+    status.customer.sent = true;
+    status.customer.sentAt = new Date().toISOString();
+  } catch (error) {
+    status.customer.error = mapEmailError(error);
+    console.error("[Ablehnung] Kunde:", error?.message || error);
   }
 
   return status;
@@ -645,6 +881,8 @@ function isEmailConfigured() {
 module.exports = {
   sendAppointmentEmails,
   sendCancellationEmail,
+  sendConfirmationEmail,
+  sendDeclineEmail,
   isEmailConfigured,
   getMailConfig,
   SALON,
