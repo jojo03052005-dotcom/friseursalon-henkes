@@ -599,6 +599,109 @@ function buildAdminCancellationEmail(appointment, baseUrl) {
 }
 
 /**
+ * Tages-Digest fuer den Salon (morgens als Cron getriggert):
+ * "Heute habt ihr X Termine".
+ */
+function buildDailyDigestEmail(appointments, today) {
+  const dateLabel = formatGermanDate(today);
+  const subject =
+    appointments.length === 0
+      ? `Heute, ${dateLabel}: keine Termine`
+      : `Heute, ${dateLabel}: ${appointments.length} Termin${appointments.length === 1 ? "" : "e"}`;
+
+  let bodyContent;
+  let textLines;
+
+  if (appointments.length === 0) {
+    bodyContent = `
+      <p style="margin:0 0 16px;font-size:16px;line-height:1.65;color:#4b3028;">
+        Guten Morgen,
+      </p>
+      <p style="margin:0 0 20px;font-size:15px;line-height:1.7;color:#4b3028;">
+        heute (${escapeHtml(dateLabel)}) sind <strong>keine Termine</strong> bestätigt. Falls noch Anfragen offen sind, schauen Sie kurz im Admin-Panel.
+      </p>`;
+    textLines = [
+      "Guten Morgen,",
+      "",
+      `heute (${dateLabel}) sind keine Termine bestaetigt.`,
+      "Falls noch Anfragen offen sind, schauen Sie kurz im Admin-Panel.",
+    ];
+  } else {
+    const rows = appointments
+      .sort((a, b) => a.time.localeCompare(b.time))
+      .map((item) => {
+        const phoneClean = String(item.phone || "").replace(/\s/g, "");
+        return `
+          <tr>
+            <td style="padding:10px 0;border-bottom:1px solid rgba(75,48,40,0.12);font-size:15px;font-weight:bold;color:#4b3028;white-space:nowrap;vertical-align:top;">${escapeHtml(item.time)}</td>
+            <td style="padding:10px 10px;border-bottom:1px solid rgba(75,48,40,0.12);font-size:14px;color:#4b3028;vertical-align:top;">
+              <strong>${escapeHtml(item.name)}</strong><br>
+              <span style="color:#77675c;">${escapeHtml(item.service)}</span>
+              ${item.notes ? `<br><em style="color:#77675c;font-size:13px;">${escapeHtml(item.notes)}</em>` : ""}
+            </td>
+            <td style="padding:10px 0;border-bottom:1px solid rgba(75,48,40,0.12);font-size:13px;color:#4b3028;vertical-align:top;text-align:right;white-space:nowrap;">
+              <a href="tel:${escapeHtml(phoneClean)}" style="color:#9f7630;text-decoration:none;">${escapeHtml(item.phone)}</a>
+            </td>
+          </tr>`;
+      })
+      .join("");
+
+    bodyContent = `
+      <p style="margin:0 0 16px;font-size:16px;line-height:1.65;color:#4b3028;">
+        Guten Morgen,
+      </p>
+      <p style="margin:0 0 20px;font-size:15px;line-height:1.7;color:#4b3028;">
+        heute (${escapeHtml(dateLabel)}) habt ihr <strong>${appointments.length} Termin${appointments.length === 1 ? "" : "e"}</strong>:
+      </p>
+      <table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="margin:0 0 24px;">
+        ${rows}
+      </table>
+      <p style="margin:0;font-size:13px;color:#77675c;line-height:1.6;">
+        Schoenen Tag!
+      </p>`;
+
+    textLines = ["Guten Morgen,", "", `heute (${dateLabel}) habt ihr ${appointments.length} Termin${appointments.length === 1 ? "" : "e"}:`, ""];
+    appointments.forEach((item) => {
+      textLines.push(`${item.time} Uhr – ${item.name} (${item.service}) – ${item.phone}`);
+      if (item.notes) textLines.push(`            Notiz: ${item.notes}`);
+    });
+    textLines.push("", "Schoenen Tag!");
+  }
+
+  return {
+    subject,
+    html: wrapEmailHtml("Heute im Salon", "Tagesübersicht", bodyContent),
+    text: textLines.join("\n"),
+  };
+}
+
+async function sendDailyDigestEmail(appointments, today) {
+  const config = getMailConfig();
+  const resend = new Resend(config.apiKey);
+  const mail = buildDailyDigestEmail(appointments, today);
+
+  const result = { sent: false, sentAt: null, error: null };
+
+  try {
+    const { error } = await resend.emails.send({
+      from: config.from,
+      to: config.salonEmail,
+      subject: mail.subject,
+      text: mail.text,
+      html: mail.html,
+    });
+    if (error) throw error;
+    result.sent = true;
+    result.sentAt = new Date().toISOString();
+  } catch (error) {
+    result.error = mapEmailError(error);
+    console.error("[Daily-Digest] Versand fehlgeschlagen:", error?.message || error);
+  }
+
+  return result;
+}
+
+/**
  * Salon-Benachrichtigung bei neuer Anfrage.
  */
 function buildSalonEmail(appointment) {
@@ -1023,6 +1126,7 @@ module.exports = {
   sendAdminCancellationEmail,
   sendConfirmationEmail,
   sendDeclineEmail,
+  sendDailyDigestEmail,
   isEmailConfigured,
   getMailConfig,
   SALON,

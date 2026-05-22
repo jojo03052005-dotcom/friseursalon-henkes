@@ -17,6 +17,7 @@ const {
   sendAdminCancellationEmail,
   sendConfirmationEmail,
   sendDeclineEmail,
+  sendDailyDigestEmail,
   isEmailConfigured,
   SALON,
 } = require("./services/emailService");
@@ -971,6 +972,84 @@ app.delete(
     }
   }
 );
+
+/* ---------------- Cron / Tageserinnerung ---------------- */
+
+/**
+ * GET /api/cron/daily-digest
+ *
+ * Wird morgens von einem externen Cron (cron-job.org, github actions, ...)
+ * aufgerufen. Sendet eine Uebersicht der heutigen bestaetigten Termine an
+ * SALON_EMAIL. Schuetzt sich per Shared-Secret in ?secret=... oder
+ * "Authorization: Bearer <SECRET>", damit kein Fremder die Mail triggern
+ * (und damit den Render-Container aufwecken + Mail-Quota anzapfen) kann.
+ *
+ * Hat den schoenen Nebeneffekt, den Server jeden Morgen warm zu halten,
+ * sodass der erste echte Kunden-Klick keinen Cold-Start mehr abkriegt.
+ */
+app.get("/api/cron/daily-digest", async (req, res) => {
+  const expectedSecret = process.env.CRON_SECRET?.trim();
+  if (!expectedSecret) {
+    return res.status(503).json({
+      success: false,
+      message: "Cron ist nicht konfiguriert (CRON_SECRET fehlt).",
+    });
+  }
+
+  const headerAuth = req.headers.authorization || "";
+  const bearerMatch = headerAuth.match(/^Bearer\s+(.+)$/i);
+  const provided = (bearerMatch ? bearerMatch[1] : req.query.secret || "").toString().trim();
+
+  if (!provided || !safeStringEqual(provided, expectedSecret)) {
+    return res.status(401).json({ success: false, message: "Ungueltiges Cron-Secret." });
+  }
+
+  try {
+    const appointments = await readAppointments();
+    // Lokale Zeitzone "heute" -- wir gehen vom Salon-Standort Deutschland aus.
+    // Berlin-Datum YYYY-MM-DD via Intl-API ableiten.
+    const todayBerlin = new Intl.DateTimeFormat("en-CA", {
+      timeZone: "Europe/Berlin",
+      year: "numeric",
+      month: "2-digit",
+      day: "2-digit",
+    }).format(new Date());
+
+    const todays = appointments.filter(
+      (item) =>
+        item.date === todayBerlin && item.confirmed && !item.cancelled && !item.declined
+    );
+
+    if (!isEmailConfigured()) {
+      return res.status(503).json({
+        success: false,
+        message: "E-Mail ist nicht konfiguriert.",
+        today: todayBerlin,
+        count: todays.length,
+      });
+    }
+
+    const result = await sendDailyDigestEmail(todays, todayBerlin);
+    console.log(
+      `[Daily-Digest] ${todayBerlin}: ${todays.length} Termine, Mail ${result.sent ? "OK" : "FAIL"}`
+    );
+
+    return res.json({
+      success: result.sent,
+      message: result.sent
+        ? `Tagesübersicht gesendet (${todays.length} Termine).`
+        : `Versand fehlgeschlagen: ${result.error || "unbekannt"}`,
+      today: todayBerlin,
+      count: todays.length,
+      result,
+    });
+  } catch (error) {
+    console.error("Fehler bei /api/cron/daily-digest:", error);
+    res
+      .status(500)
+      .json({ success: false, message: "Tagesübersicht fehlgeschlagen." });
+  }
+});
 
 /* ---------------- Stornier-Flow ---------------- */
 
