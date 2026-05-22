@@ -92,6 +92,7 @@
   </script>
 </head>
 <body>
+  <a class="skip-link" href="#start">Direkt zum Inhalt</a>
   <header class="site-header" data-header>
     <a class="brand" href="#start" aria-label="Friseursalon Henkes Startseite">
       <span class="brand-mark">H</span>
@@ -372,32 +373,32 @@
       <div class="booking-panel reveal">
         <p class="section-kicker">Terminbuchung</p>
         <h2>Wunschtermin anfragen</h2>
-        <form class="booking-form" data-booking-form novalidate>
+        <form class="booking-form" data-booking-form novalidate aria-describedby="booking-form-status">
           <label>
             Name
-            <input type="text" name="name" placeholder="Ihr Name" autocomplete="name" required>
+            <input type="text" name="name" placeholder="Ihr Name" autocomplete="name" required aria-required="true">
           </label>
           <label>
             Telefon
-            <input type="tel" name="phone" placeholder="Ihre Telefonnummer" autocomplete="tel" inputmode="tel" pattern="[0-9\s+\-/()]{6,}" title="Bitte nur Ziffern und Trennzeichen (Leerzeichen, +, -, /, Klammern)" required>
+            <input type="tel" name="phone" placeholder="Ihre Telefonnummer" autocomplete="tel" inputmode="tel" pattern="[0-9\s+\-/()]{6,}" title="Bitte nur Ziffern und Trennzeichen (Leerzeichen, +, -, /, Klammern)" required aria-required="true">
           </label>
           <label>
             E-Mail
-            <input type="email" name="email" placeholder="ihre@email.de" autocomplete="email" required>
+            <input type="email" name="email" placeholder="ihre@email.de" autocomplete="email" required aria-required="true">
           </label>
           <div class="booking-form-row">
             <label>
               Wunschdatum
-              <input type="date" name="date" required>
+              <input type="date" name="date" required aria-required="true">
             </label>
             <label>
               Uhrzeit
-              <input type="time" name="time" min="08:00" max="18:00" step="900" required>
+              <input type="time" name="time" min="08:00" max="18:00" step="900" required aria-required="true">
             </label>
           </div>
           <label>
             Leistung
-            <select name="service" required>
+            <select name="service" required aria-required="true">
               <option value="">Bitte auswählen</option>
               <option value="Haarschnitt">Haarschnitt</option>
               <option value="Färbung">Färbung</option>
@@ -416,7 +417,7 @@
             der Terminanfrage verarbeiten dürfen. Details in unserer
             <a href="/datenschutz.html">Datenschutzerklärung</a>.
           </p>
-          <p class="form-message" role="status" aria-live="polite" data-form-message></p>
+          <p class="form-message" id="booking-form-status" role="status" aria-live="polite" data-form-message></p>
         </form>
       </div>
 

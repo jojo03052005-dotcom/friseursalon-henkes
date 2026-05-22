@@ -40,6 +40,35 @@ a {
   text-decoration: none;
 }
 
+/* Skip-Link fuer Tastatur-Nutzer: erst sichtbar bei Fokus, springt am
+   Header vorbei direkt zum Hauptinhalt. */
+.skip-link {
+  position: absolute;
+  top: 0;
+  left: 0;
+  z-index: 1000;
+  padding: 12px 18px;
+  color: var(--cream);
+  background: var(--brown);
+  font-weight: 700;
+  transform: translateY(-150%);
+  transition: transform 0.2s ease;
+}
+
+.skip-link:focus {
+  transform: translateY(0);
+  outline: 3px solid var(--gold);
+  outline-offset: 2px;
+}
+
+/* Konsistenter Focus-Ring fuer Tastatur-Nutzer ueber alles, was nicht
+   schon einen hat. :focus-visible blendet das fuer Maus-Klicks aus. */
+*:focus-visible {
+  outline: 3px solid var(--gold);
+  outline-offset: 2px;
+  border-radius: 2px;
+}
+
 .site-header {
   position: fixed;
   inset: 0 0 auto;
