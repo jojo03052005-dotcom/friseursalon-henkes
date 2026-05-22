@@ -379,7 +379,7 @@
           </label>
           <label>
             Telefon
-            <input type="tel" name="phone" placeholder="Ihre Telefonnummer" autocomplete="tel" required>
+            <input type="tel" name="phone" placeholder="Ihre Telefonnummer" autocomplete="tel" inputmode="tel" pattern="[0-9\s+\-/()]{6,}" title="Bitte nur Ziffern und Trennzeichen (Leerzeichen, +, -, /, Klammern)" required>
           </label>
           <label>
             E-Mail
@@ -392,7 +392,7 @@
             </label>
             <label>
               Uhrzeit
-              <input type="time" name="time" min="08:00" max="18:00" required>
+              <input type="time" name="time" min="08:00" max="18:00" step="900" required>
             </label>
           </div>
           <label>

@@ -41,7 +41,20 @@ const ALLOWED_SERVICES = [
 ];
 
 const EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/i;
+// Telefonnummern: nur sinnvolle Zeichen erlaubt. Buchstaben verraten Spam-Bots,
+// die wirres Zeug einfuellen. Ziffern muessen mind. 6 sein -- weniger ist
+// realistisch keine echte Nummer.
+const PHONE_ALLOWED_CHARS = /^[\d\s+\-/()]+$/;
 const MAX_NOTES_LENGTH = 500;
+
+// In Deutschland sind Friseure sonntags zu (Ladenschlussgesetz). Schluss-
+// blockade gegen Test-/Fehl-Buchungen. Wenn der Salon ALSo zusaetzlich
+// montags zu hat, einfach 1 (Montag) ergaenzen. Sonntag = 0.
+const CLOSED_WEEKDAYS = new Set([0]);
+
+// Wir akzeptieren nur Slots im 15-Minuten-Raster (HH:00, HH:15, HH:30, HH:45).
+// Krumme Zeiten wie 14:37 deuten auf Tipper oder Bot.
+const ALLOWED_MINUTES = new Set(["00", "15", "30", "45"]);
 
 /* ---------------- Rate-Limiting ---------------- */
 
@@ -186,8 +199,12 @@ function validateAppointment(payload) {
     errors.push("Bitte geben Sie einen gültigen Namen ein.");
   }
 
-  if (!phone || phone.replace(/\D/g, "").length < 6) {
-    errors.push("Bitte geben Sie eine gültige Telefonnummer ein.");
+  if (!phone) {
+    errors.push("Bitte geben Sie Ihre Telefonnummer ein.");
+  } else if (!PHONE_ALLOWED_CHARS.test(phone)) {
+    errors.push("Telefonnummer darf nur Ziffern und Trennzeichen enthalten.");
+  } else if (phone.replace(/\D/g, "").length < 6) {
+    errors.push("Bitte geben Sie eine vollständige Telefonnummer ein.");
   }
 
   if (!email) {
@@ -197,24 +214,54 @@ function validateAppointment(payload) {
   }
 
   const dateMatch = /^\d{4}-\d{2}-\d{2}$/.test(date);
+  let dateIsValid = false;
+  let parsedDate = null;
   if (!dateMatch) {
     errors.push("Bitte wählen Sie ein gültiges Datum.");
   } else {
-    const parsed = new Date(`${date}T12:00:00`);
-    if (Number.isNaN(parsed.getTime())) {
+    parsedDate = new Date(`${date}T12:00:00`);
+    if (Number.isNaN(parsedDate.getTime())) {
       errors.push("Das gewählte Datum ist ungültig.");
     } else {
       const today = new Date();
       today.setHours(0, 0, 0, 0);
-      if (parsed < today) {
+      if (parsedDate < today) {
         errors.push("Das Datum darf nicht in der Vergangenheit liegen.");
+      } else if (CLOSED_WEEKDAYS.has(parsedDate.getDay())) {
+        errors.push(
+          "An diesem Wochentag ist der Salon geschlossen. Bitte wählen Sie einen anderen Tag."
+        );
+      } else {
+        dateIsValid = true;
       }
     }
   }
 
-  const timeMatch = /^([01]\d|2[0-3]):([0-5]\d)$/.test(time);
+  const timeMatch = /^([01]\d|2[0-3]):([0-5]\d)$/.exec(time);
   if (!timeMatch) {
     errors.push("Bitte wählen Sie eine gültige Uhrzeit.");
+  } else {
+    const [, hh, mm] = timeMatch;
+    if (!ALLOWED_MINUTES.has(mm)) {
+      errors.push("Bitte wählen Sie eine Uhrzeit im 15-Minuten-Raster (z.B. 10:00, 10:15).");
+    }
+    // Wenn der gewuenschte Termin heute ist, darf die Uhrzeit nicht in der
+    // Vergangenheit liegen (mind. 60 Min Vorlauf, damit der Salon reagieren kann).
+    if (dateIsValid && parsedDate) {
+      const today = new Date();
+      today.setHours(0, 0, 0, 0);
+      const requestedDay = new Date(parsedDate);
+      requestedDay.setHours(0, 0, 0, 0);
+      if (requestedDay.getTime() === today.getTime()) {
+        const requestedTime = new Date(`${date}T${hh}:${mm}:00`);
+        const minimumLead = new Date(Date.now() + 60 * 60 * 1000);
+        if (requestedTime < minimumLead) {
+          errors.push(
+            "Für heute brauchen wir mindestens 60 Minuten Vorlauf. Bitte wählen Sie eine spätere Uhrzeit oder rufen Sie kurz an."
+          );
+        }
+      }
+    }
   }
 
   if (!service || !ALLOWED_SERVICES.includes(service)) {
