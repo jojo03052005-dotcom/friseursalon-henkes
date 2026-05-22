@@ -3,12 +3,93 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <meta name="description" content="Friseursalon Henkes in Gelsenkirchen: Haarschnitt, Farbe, Strähnen, Styling und Haarpflege in familiärer Atmosphäre.">
-  <title>Friseursalon Henkes | Gelsenkirchen</title>
+  <meta name="theme-color" content="#4b3028">
+  <meta name="description" content="Friseursalon Henkes in Gelsenkirchen-Buer: Haarschnitt, Färbung, Strähnen, Styling und Haarpflege. Seit Jahrzehnten Ihr Vertrauensfriseur in der Fürstinnenstraße.">
+  <meta name="keywords" content="Friseur Gelsenkirchen, Friseursalon Buer, Haarschnitt Gelsenkirchen, Färben Gelsenkirchen, Strähnen Gelsenkirchen, Haarpflege, Friseursalon Henkes">
+  <link rel="canonical" href="https://friseursalon-henkes-website.netlify.app/">
+  <title>Friseursalon Henkes | Friseur in Gelsenkirchen-Buer</title>
+
+  <!-- Open Graph (Facebook / WhatsApp / iMessage Vorschau) -->
+  <meta property="og:type" content="website">
+  <meta property="og:locale" content="de_DE">
+  <meta property="og:site_name" content="Friseursalon Henkes">
+  <meta property="og:title" content="Friseursalon Henkes | Friseur in Gelsenkirchen-Buer">
+  <meta property="og:description" content="Familiärer Friseursalon in Gelsenkirchen: Haarschnitt, Färbung, Strähnen, Styling. 4,8 ★ bei 71 Google-Bewertungen. Termin online anfragen.">
+  <meta property="og:url" content="https://friseursalon-henkes-website.netlify.app/">
+  <meta property="og:image" content="https://friseursalon-henkes-website.netlify.app/og-image.jpg">
+  <meta property="og:image:alt" content="Friseursalon Henkes – Innenansicht des Salons in Gelsenkirchen">
+
+  <!-- Twitter / X Card -->
+  <meta name="twitter:card" content="summary_large_image">
+  <meta name="twitter:title" content="Friseursalon Henkes | Gelsenkirchen-Buer">
+  <meta name="twitter:description" content="Familiärer Friseursalon in Gelsenkirchen: 4,8 ★ bei 71 Bewertungen. Termin online anfragen.">
+  <meta name="twitter:image" content="https://friseursalon-henkes-website.netlify.app/og-image.jpg">
+
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=Playfair+Display:wght@600;700&display=swap" rel="stylesheet">
   <link rel="stylesheet" href="styles.css">
+
+  <!--
+    Schema.org strukturierte Daten fuer Google Local Pack.
+    LocalBusiness > HairSalon ist DAS Pflicht-Markup fuer einen Friseur, der
+    in Google Maps und im "Friseur in der Naehe"-Ranking auftauchen will.
+    Werte hier bewusst aus den sichtbaren Inhalten gespiegelt, damit nichts
+    auseinanderlaeuft.
+  -->
+  <script type="application/ld+json">
+  {
+    "@context": "https://schema.org",
+    "@type": "HairSalon",
+    "name": "Friseursalon Henkes",
+    "image": "https://friseursalon-henkes-website.netlify.app/og-image.jpg",
+    "url": "https://friseursalon-henkes-website.netlify.app/",
+    "telephone": "+49-209-41793",
+    "priceRange": "€€",
+    "address": {
+      "@type": "PostalAddress",
+      "streetAddress": "Fürstinnenstraße 40",
+      "addressLocality": "Gelsenkirchen",
+      "postalCode": "45883",
+      "addressCountry": "DE"
+    },
+    "aggregateRating": {
+      "@type": "AggregateRating",
+      "ratingValue": "4.8",
+      "reviewCount": "71",
+      "bestRating": "5",
+      "worstRating": "1"
+    },
+    "openingHoursSpecification": [
+      {
+        "@type": "OpeningHoursSpecification",
+        "dayOfWeek": ["Tuesday", "Wednesday", "Thursday", "Friday"],
+        "opens": "09:00",
+        "closes": "18:00"
+      },
+      {
+        "@type": "OpeningHoursSpecification",
+        "dayOfWeek": "Saturday",
+        "opens": "08:00",
+        "closes": "14:00"
+      }
+    ],
+    "sameAs": [
+      "https://maps.app.goo.gl/zW7JCsDZkduqHnX57"
+    ],
+    "hasOfferCatalog": {
+      "@type": "OfferCatalog",
+      "name": "Friseur-Leistungen",
+      "itemListElement": [
+        { "@type": "Offer", "itemOffered": { "@type": "Service", "name": "Haarschnitt" } },
+        { "@type": "Offer", "itemOffered": { "@type": "Service", "name": "Färbung" } },
+        { "@type": "Offer", "itemOffered": { "@type": "Service", "name": "Strähnen" } },
+        { "@type": "Offer", "itemOffered": { "@type": "Service", "name": "Styling" } },
+        { "@type": "Offer", "itemOffered": { "@type": "Service", "name": "Haarpflege" } }
+      ]
+    }
+  }
+  </script>
 </head>
 <body>
   <header class="site-header" data-header>
@@ -91,7 +172,7 @@
         <p>Der Salon ist von Frauen geführt, LGBTQ+-freundlich und arbeitet mit hochwertigen Produkten für Schnitt, Farbe, Pflege und Styling.</p>
       </div>
       <div class="about-panel reveal">
-        <img src="https://images.unsplash.com/photo-1522337660859-02fbefca4702?auto=format&fit=crop&w=900&q=85" alt="Professionelle Friseurin beim Stylen im Salon">
+        <img src="https://images.unsplash.com/photo-1522337660859-02fbefca4702?auto=format&fit=crop&w=900&q=85" alt="Professionelle Friseurin beim Stylen im Salon" loading="lazy" decoding="async" width="900" height="600">
         <div class="badge-card">
           <strong>Bester Friseur in Gelsenkirchen</strong>
           <span>Kundenstimme von Arno Nüm</span>
