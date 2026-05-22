@@ -158,12 +158,32 @@ bookingForm.addEventListener("submit", async (event) => {
   bookingForm.classList.add("is-submitting");
   submitBtn.disabled = true;
 
+  // Render-Free-Tier schlaeft nach 15 Min ohne Traffic. Beim ersten Klick
+  // dauert das Aufwecken 30-60 Sekunden, in denen das Formular einfach
+  // "lädt" -- Kunde denkt's haengt. Nach 5s zeigen wir einen Hinweis, nach
+  // 15s einen noch ausfuehrlicheren, damit klar ist: nicht kaputt, nur lahm.
+  const slowHintTimer = setTimeout(() => {
+    showFormFeedback(
+      "loading",
+      "Ihre Anfrage wird gesendet … (der Server wacht gerade auf, das dauert kurz)"
+    );
+  }, 5000);
+  const verySlowHintTimer = setTimeout(() => {
+    showFormFeedback(
+      "loading",
+      "Server startet noch … bitte gleich nicht doppelt klicken, das kann bis zu einer Minute dauern."
+    );
+  }, 15000);
+
   try {
     const response = await fetch(`${API_BASE}/api/appointments`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(payload),
     });
+
+    clearTimeout(slowHintTimer);
+    clearTimeout(verySlowHintTimer);
 
     const result = await readJsonResponse(response);
 
@@ -187,10 +207,12 @@ bookingForm.addEventListener("submit", async (event) => {
     showFormFeedback(
       "error",
       isNetwork
-        ? "Server nicht erreichbar. Bitte starten Sie den Server mit „npm start“ und laden Sie die Seite neu."
+        ? "Verbindung zum Server fehlgeschlagen. Bitte einen Moment warten und es nochmal versuchen – oder kurz anrufen: 0209 41793."
         : error.message
     );
   } finally {
+    clearTimeout(slowHintTimer);
+    clearTimeout(verySlowHintTimer);
     bookingForm.classList.remove("is-submitting");
     submitBtn.disabled = false;
     isSubmitting = false;
