@@ -191,6 +191,24 @@
   border: 1px solid rgba(122, 46, 46, 0.3);
 }
 
+.status-pending {
+  color: #6a4a17;
+  background: rgba(202, 164, 93, 0.22);
+  border: 1px solid rgba(159, 118, 48, 0.4);
+}
+
+.status-confirmed {
+  color: #2d5a3d;
+  background: rgba(45, 90, 61, 0.14);
+  border: 1px solid rgba(45, 90, 61, 0.3);
+}
+
+.status-declined {
+  color: #7a2e2e;
+  background: rgba(122, 46, 46, 0.1);
+  border: 1px solid rgba(122, 46, 46, 0.25);
+}
+
 .status-reminder {
   display: inline-block;
   margin-top: 6px;
@@ -200,13 +218,99 @@
   letter-spacing: 0.02em;
 }
 
-.admin-table tr.is-cancelled td {
+.admin-table tr.is-cancelled td,
+.admin-table tr.is-declined td {
   color: var(--muted);
 }
 
-.admin-table tr.is-cancelled td:not(:last-child) {
+.admin-table tr.is-cancelled td:not(:last-child),
+.admin-table tr.is-declined td:not(:last-child) {
   text-decoration: line-through;
   text-decoration-color: rgba(122, 46, 46, 0.5);
+}
+
+.admin-table tr.is-confirmed {
+  background: rgba(45, 90, 61, 0.04);
+}
+
+/* ---------------- Aktions-Buttons ---------------- */
+
+.admin-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.admin-actions-empty {
+  color: var(--muted);
+  font-weight: 600;
+}
+
+.admin-action-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 6px 12px;
+  border-radius: 4px;
+  border: 1px solid transparent;
+  font-family: inherit;
+  font-size: 0.8rem;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+  cursor: pointer;
+  transition: background 0.15s ease, color 0.15s ease, border-color 0.15s ease,
+    opacity 0.15s ease;
+  white-space: nowrap;
+}
+
+.admin-action-btn:disabled {
+  cursor: progress;
+  opacity: 0.6;
+}
+
+.admin-action-btn.is-loading {
+  position: relative;
+  color: transparent;
+}
+
+.admin-action-btn.is-loading::after {
+  content: "";
+  position: absolute;
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  border: 2px solid currentColor;
+  border-top-color: transparent;
+  color: var(--muted);
+  animation: admin-spin 0.8s linear infinite;
+}
+
+@keyframes admin-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+.admin-action-confirm {
+  color: #2d5a3d;
+  background: rgba(45, 90, 61, 0.12);
+  border-color: rgba(45, 90, 61, 0.3);
+}
+
+.admin-action-confirm:hover:not(:disabled) {
+  background: rgba(45, 90, 61, 0.22);
+  border-color: rgba(45, 90, 61, 0.55);
+}
+
+.admin-action-decline {
+  color: #7a2e2e;
+  background: rgba(122, 46, 46, 0.08);
+  border-color: rgba(122, 46, 46, 0.25);
+}
+
+.admin-action-decline:hover:not(:disabled) {
+  background: rgba(122, 46, 46, 0.18);
+  border-color: rgba(122, 46, 46, 0.5);
 }
 
 .admin-notes {

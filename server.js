@@ -8,10 +8,12 @@ require("dotenv").config();
 const express = require("express");
 const fs = require("fs/promises");
 const path = require("path");
-const { randomUUID } = require("crypto");
+const { randomUUID, timingSafeEqual } = require("crypto");
 const {
   sendAppointmentEmails,
   sendCancellationEmail,
+  sendConfirmationEmail,
+  sendDeclineEmail,
   isEmailConfigured,
   SALON,
 } = require("./services/emailService");
@@ -64,6 +66,15 @@ app.use((req, res, next) => {
 
   return next();
 });
+// Admin-Static-Files (admin.html, admin.js) hinter Basic Auth.
+// admin.css ist bewusst frei, enthaelt keine PII.
+app.use((req, res, next) => {
+  if (req.path === "/admin.html" || req.path === "/admin.js") {
+    return requireAdminAuth(req, res, next);
+  }
+  return next();
+});
+
 app.use(express.static(ROOT));
 
 app.get("/api/health", (_req, res) => {
@@ -184,8 +195,80 @@ function deriveBaseUrl(req) {
   return host ? `${proto}://${host}` : "";
 }
 
-/** GET /api/appointments */
-app.get("/api/appointments", async (_req, res) => {
+/* ---------------- Admin-Auth (HTTP Basic) ---------------- */
+
+/**
+ * Konstantzeit-Vergleich zweier Strings. Bei unterschiedlicher Laenge wird
+ * trotzdem ein Dummy-Vergleich gegen einen gleichlangen Nullbuffer ausgefuehrt,
+ * damit kein Timing-Leak ueber die Laenge entsteht.
+ */
+function safeStringEqual(a, b) {
+  const aBuf = Buffer.from(String(a ?? ""), "utf8");
+  const bBuf = Buffer.from(String(b ?? ""), "utf8");
+  if (aBuf.length !== bBuf.length) {
+    // Dummy-Vergleich gleicher Laenge, Ergebnis verwerfen.
+    timingSafeEqual(aBuf, Buffer.alloc(aBuf.length));
+    return false;
+  }
+  return timingSafeEqual(aBuf, bBuf);
+}
+
+function sendAuthChallenge(res, status, message) {
+  res.setHeader("WWW-Authenticate", 'Basic realm="Friseursalon Henkes Admin", charset="UTF-8"');
+  res.status(status).type("text/plain; charset=utf-8").send(message);
+}
+
+/**
+ * Express-Middleware: schuetzt Admin-Routen per HTTP Basic Auth.
+ * Erwartet ADMIN_USER und ADMIN_PASSWORD in den Umgebungsvariablen.
+ * Wenn die Vars fehlen, antwortet die Route mit 503 -- der Admin-Bereich
+ * ist dann komplett gesperrt, statt versehentlich offen zu sein.
+ */
+function requireAdminAuth(req, res, next) {
+  const expectedUser = process.env.ADMIN_USER?.trim();
+  const expectedPass = process.env.ADMIN_PASSWORD?.trim();
+
+  if (!expectedUser || !expectedPass) {
+    return res
+      .status(503)
+      .type("text/plain; charset=utf-8")
+      .send(
+        "Admin-Login ist nicht konfiguriert. Bitte ADMIN_USER und ADMIN_PASSWORD in den Render-Env-Vars setzen."
+      );
+  }
+
+  const header = req.headers.authorization || "";
+  const match = header.match(/^Basic\s+(.+)$/i);
+
+  if (!match) {
+    return sendAuthChallenge(res, 401, "Anmeldung erforderlich.");
+  }
+
+  let user = "";
+  let pass = "";
+  try {
+    const decoded = Buffer.from(match[1], "base64").toString("utf8");
+    const colon = decoded.indexOf(":");
+    if (colon >= 0) {
+      user = decoded.slice(0, colon);
+      pass = decoded.slice(colon + 1);
+    }
+  } catch (_err) {
+    return sendAuthChallenge(res, 401, "Ungueltige Anmeldedaten.");
+  }
+
+  const userOk = safeStringEqual(user, expectedUser);
+  const passOk = safeStringEqual(pass, expectedPass);
+
+  if (!userOk || !passOk) {
+    return sendAuthChallenge(res, 401, "Falsche Anmeldedaten.");
+  }
+
+  return next();
+}
+
+/** GET /api/appointments – Admin-only Liste aller Buchungen. */
+app.get("/api/appointments", requireAdminAuth, async (_req, res) => {
   try {
     const appointments = await readAppointments();
     appointments.sort((a, b) => `${a.date}T${a.time}`.localeCompare(`${b.date}T${b.time}`));
@@ -219,6 +302,11 @@ app.post("/api/appointments", async (req, res) => {
       createdAt,
       cancelled: false,
       cancelledAt: null,
+      // Anfrage-Workflow: Salon bestaetigt oder lehnt ueber den Admin-Bereich ab.
+      confirmed: false,
+      confirmedAt: null,
+      declined: false,
+      declinedAt: null,
       emailStatus: {
         customer: { sent: false, sentAt: null, error: null },
         salon: { sent: false, sentAt: null, error: null },
@@ -228,6 +316,18 @@ app.post("/api/appointments", async (req, res) => {
           emailId: null,
           error: null,
         },
+      },
+      confirmationStatus: {
+        customer: { sent: false, sentAt: null, error: null },
+        reminder: {
+          scheduled: false,
+          scheduledFor: null,
+          emailId: null,
+          error: null,
+        },
+      },
+      declineStatus: {
+        customer: { sent: false, sentAt: null, error: null },
       },
     };
 
@@ -301,13 +401,13 @@ app.post("/api/appointments", async (req, res) => {
 
     console.log(
       `[Termin] ${appointment.name} – ${appointment.date} ${appointment.time}` +
-        ` (Mails OK, Reminder ${emailStatus.reminder.scheduled ? "geplant" : "skipped"})`
+        ` (Eingangs-Mails OK, Bestaetigung steht aus)`
     );
 
     res.status(201).json({
       success: true,
       message:
-        "Ihre Terminanfrage wurde erfolgreich gesendet. Sie erhalten in Kürze eine Bestätigungs-E-Mail.",
+        "Vielen Dank! Wir haben Ihre Anfrage erhalten und melden uns in Kürze mit einer persönlichen Bestätigung. Sie bekommen gleich eine Eingangs-E-Mail von uns.",
       appointment: {
         id: appointment.id,
         name: appointment.name,
@@ -328,6 +428,222 @@ app.post("/api/appointments", async (req, res) => {
     res.status(500).json({
       success: false,
       message: "Die Buchung konnte nicht abgeschlossen werden. Bitte versuchen Sie es erneut.",
+    });
+  }
+});
+
+/* ---------------- Admin: Bestaetigen / Ablehnen ---------------- */
+
+/**
+ * Hilfsfunktion: liest Termine und gibt das passende Element +
+ * Index zurueck. Setzt selbst keine HTTP-Antworten.
+ */
+async function findAppointmentById(id) {
+  const appointments = await readAppointments();
+  const index = appointments.findIndex((item) => item.id === id);
+  if (index === -1) return { appointments, appointment: null, index: -1 };
+  return { appointments, appointment: appointments[index], index };
+}
+
+/**
+ * POST /api/admin/appointments/:id/confirm
+ * Markiert den Termin als bestaetigt, sendet die Bestaetigungs-Mail
+ * an den Kunden und plant die 24h-Erinnerung via Resend.
+ */
+app.post("/api/admin/appointments/:id/confirm", requireAdminAuth, async (req, res) => {
+  try {
+    const id = String(req.params.id || "");
+    if (!id) {
+      return res.status(400).json({ success: false, message: "Termin-ID fehlt." });
+    }
+
+    const { appointments, appointment, index } = await findAppointmentById(id);
+
+    if (!appointment) {
+      return res.status(404).json({ success: false, message: "Termin nicht gefunden." });
+    }
+
+    if (appointment.cancelled) {
+      return res
+        .status(409)
+        .json({ success: false, message: "Termin wurde bereits vom Kunden storniert." });
+    }
+
+    if (appointment.declined) {
+      return res.status(409).json({
+        success: false,
+        message: "Termin wurde bereits abgelehnt. Statuswechsel nicht moeglich.",
+      });
+    }
+
+    if (appointment.confirmed) {
+      return res.status(200).json({
+        success: true,
+        message: "Termin war bereits bestaetigt.",
+        appointment,
+      });
+    }
+
+    appointment.confirmed = true;
+    appointment.confirmedAt = new Date().toISOString();
+
+    const baseUrl = deriveBaseUrl(req);
+
+    if (isEmailConfigured()) {
+      try {
+        const confirmResult = await sendConfirmationEmail(appointment, baseUrl);
+        appointment.confirmationStatus = confirmResult;
+      } catch (mailError) {
+        console.error("[Bestaetigen] E-Mail-Aktionen fehlgeschlagen:", mailError);
+        appointment.confirmationStatus = {
+          customer: {
+            sent: false,
+            sentAt: null,
+            error: String(mailError?.message || mailError),
+          },
+          reminder: {
+            scheduled: false,
+            scheduledFor: null,
+            emailId: null,
+            error: String(mailError?.message || mailError),
+          },
+        };
+      }
+    } else {
+      appointment.confirmationStatus = {
+        customer: { sent: false, sentAt: null, error: "E-Mail nicht konfiguriert." },
+        reminder: {
+          scheduled: false,
+          scheduledFor: null,
+          emailId: null,
+          error: "E-Mail nicht konfiguriert.",
+        },
+      };
+    }
+
+    appointments[index] = appointment;
+    await writeAppointments(appointments);
+
+    console.log(
+      `[Bestaetigen] ${appointment.name} – ${appointment.date} ${appointment.time}` +
+        ` (Mail ${appointment.confirmationStatus.customer.sent ? "OK" : "FAIL"},` +
+        ` Reminder ${appointment.confirmationStatus.reminder.scheduled ? "geplant" : "skipped"})`
+    );
+
+    const customerOk = appointment.confirmationStatus.customer.sent;
+    if (!customerOk) {
+      return res.status(502).json({
+        success: false,
+        message: `Termin bestätigt, aber die Bestätigungs-Mail an den Kunden ist fehlgeschlagen: ${appointment.confirmationStatus.customer.error || "unbekannter Fehler"}`,
+        appointment,
+      });
+    }
+
+    return res.json({
+      success: true,
+      message: "Termin bestätigt – Mail an Kunde versendet.",
+      appointment,
+    });
+  } catch (error) {
+    console.error("Fehler bei /api/admin/.../confirm:", error);
+    res.status(500).json({
+      success: false,
+      message: "Bestätigung fehlgeschlagen. Bitte erneut versuchen.",
+    });
+  }
+});
+
+/**
+ * POST /api/admin/appointments/:id/decline
+ * Markiert den Termin als abgelehnt und sendet eine Absage-Mail
+ * an den Kunden mit Bitte, einen anderen Termin anzufragen.
+ */
+app.post("/api/admin/appointments/:id/decline", requireAdminAuth, async (req, res) => {
+  try {
+    const id = String(req.params.id || "");
+    if (!id) {
+      return res.status(400).json({ success: false, message: "Termin-ID fehlt." });
+    }
+
+    const { appointments, appointment, index } = await findAppointmentById(id);
+
+    if (!appointment) {
+      return res.status(404).json({ success: false, message: "Termin nicht gefunden." });
+    }
+
+    if (appointment.cancelled) {
+      return res
+        .status(409)
+        .json({ success: false, message: "Termin wurde bereits vom Kunden storniert." });
+    }
+
+    if (appointment.confirmed) {
+      return res.status(409).json({
+        success: false,
+        message: "Termin wurde bereits bestaetigt. Statuswechsel nicht moeglich.",
+      });
+    }
+
+    if (appointment.declined) {
+      return res.status(200).json({
+        success: true,
+        message: "Termin war bereits abgelehnt.",
+        appointment,
+      });
+    }
+
+    appointment.declined = true;
+    appointment.declinedAt = new Date().toISOString();
+
+    const baseUrl = deriveBaseUrl(req);
+
+    if (isEmailConfigured()) {
+      try {
+        const declineResult = await sendDeclineEmail(appointment, baseUrl);
+        appointment.declineStatus = declineResult;
+      } catch (mailError) {
+        console.error("[Ablehnen] E-Mail-Aktionen fehlgeschlagen:", mailError);
+        appointment.declineStatus = {
+          customer: {
+            sent: false,
+            sentAt: null,
+            error: String(mailError?.message || mailError),
+          },
+        };
+      }
+    } else {
+      appointment.declineStatus = {
+        customer: { sent: false, sentAt: null, error: "E-Mail nicht konfiguriert." },
+      };
+    }
+
+    appointments[index] = appointment;
+    await writeAppointments(appointments);
+
+    console.log(
+      `[Ablehnen] ${appointment.name} – ${appointment.date} ${appointment.time}` +
+        ` (Mail ${appointment.declineStatus.customer.sent ? "OK" : "FAIL"})`
+    );
+
+    const customerOk = appointment.declineStatus.customer.sent;
+    if (!customerOk) {
+      return res.status(502).json({
+        success: false,
+        message: `Termin abgelehnt, aber die Absage-Mail an den Kunden ist fehlgeschlagen: ${appointment.declineStatus.customer.error || "unbekannter Fehler"}`,
+        appointment,
+      });
+    }
+
+    return res.json({
+      success: true,
+      message: "Termin abgelehnt – Mail an Kunde versendet.",
+      appointment,
+    });
+  } catch (error) {
+    console.error("Fehler bei /api/admin/.../decline:", error);
+    res.status(500).json({
+      success: false,
+      message: "Ablehnung fehlgeschlagen. Bitte erneut versuchen.",
     });
   }
 });

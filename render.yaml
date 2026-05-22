@@ -31,3 +31,9 @@ services:
       # https://friseursalon-henkes-backend.onrender.com
       - key: PUBLIC_BASE_URL
         sync: false
+      # Pflicht fuer den Admin-Bereich: HTTP Basic Auth.
+      # Ohne diese beiden Werte ist /admin.html komplett gesperrt.
+      - key: ADMIN_USER
+        sync: false
+      - key: ADMIN_PASSWORD
+        sync: false
