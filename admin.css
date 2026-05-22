@@ -80,6 +80,40 @@
   display: none;
 }
 
+/* ---------------- Filter-Tabs ---------------- */
+
+.admin-filters {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin: 0 0 18px;
+}
+
+.admin-filter {
+  padding: 8px 16px;
+  font-family: inherit;
+  font-size: 0.85rem;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+  color: var(--brown);
+  background: var(--cream);
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  cursor: pointer;
+  transition: background 0.15s ease, color 0.15s ease, border-color 0.15s ease;
+}
+
+.admin-filter:hover {
+  background: rgba(202, 164, 93, 0.16);
+  border-color: var(--gold-dark);
+}
+
+.admin-filter.is-active {
+  color: var(--cream);
+  background: var(--brown);
+  border-color: var(--brown);
+}
+
 .admin-table-wrap {
   border: 1px solid var(--line);
   border-radius: 8px;
@@ -218,6 +252,12 @@
   letter-spacing: 0.02em;
 }
 
+.status-reminder.conflict-badge {
+  color: #7a2e2e;
+  font-weight: 800;
+  cursor: help;
+}
+
 .admin-table tr.is-cancelled td,
 .admin-table tr.is-declined td {
   color: var(--muted);
@@ -311,6 +351,30 @@
 .admin-action-decline:hover:not(:disabled) {
   background: rgba(122, 46, 46, 0.18);
   border-color: rgba(122, 46, 46, 0.5);
+}
+
+.admin-action-cancel {
+  color: #7a2e2e;
+  background: rgba(122, 46, 46, 0.06);
+  border-color: rgba(122, 46, 46, 0.3);
+}
+
+.admin-action-cancel:hover:not(:disabled) {
+  background: rgba(122, 46, 46, 0.18);
+  border-color: rgba(122, 46, 46, 0.55);
+}
+
+.admin-action-delete {
+  color: var(--muted);
+  background: var(--white);
+  border-color: var(--line);
+  font-size: 0.75rem;
+}
+
+.admin-action-delete:hover:not(:disabled) {
+  color: #7a2e2e;
+  background: rgba(122, 46, 46, 0.08);
+  border-color: rgba(122, 46, 46, 0.4);
 }
 
 .admin-notes {

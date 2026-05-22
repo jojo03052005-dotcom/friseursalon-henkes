@@ -6,12 +6,15 @@
 require("dotenv").config();
 
 const express = require("express");
+const helmet = require("helmet");
+const rateLimit = require("express-rate-limit");
 const fs = require("fs/promises");
 const path = require("path");
 const { randomUUID, timingSafeEqual } = require("crypto");
 const {
   sendAppointmentEmails,
   sendCancellationEmail,
+  sendAdminCancellationEmail,
   sendConfirmationEmail,
   sendDeclineEmail,
   isEmailConfigured,
@@ -39,6 +42,62 @@ const ALLOWED_SERVICES = [
 
 const EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/i;
 const MAX_NOTES_LENGTH = 500;
+
+/* ---------------- Rate-Limiting ---------------- */
+
+// Strenger Limiter fuer die Buchungs-API: jede neue Anfrage kostet uns
+// 2 Resend-Mails -- ein Bot kann unser Resend-Kontingent in Minuten
+// auffressen. 5 Buchungen pro 15 Minuten pro IP reichen fuer echte
+// Kunden dicke (selbst eine Familie bucht selten 5 Termine gleichzeitig).
+const bookingLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  max: 5,
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: {
+    success: false,
+    message:
+      "Zu viele Anfragen von dieser Adresse. Bitte versuchen Sie es in ein paar Minuten erneut oder rufen Sie uns kurz an.",
+  },
+});
+
+// Storno-Endpoint: Token ist 128 Bit Zufall, brute-force ist praktisch
+// unmoeglich -- trotzdem etwas Rate-Limit, damit niemand Resend-Cancel-
+// Calls in Massen ausloesen kann.
+const cancelLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  max: 20,
+  standardHeaders: true,
+  legacyHeaders: false,
+});
+
+// Admin-Endpoints: pro IP grosszuegig, da bereits durch Basic-Auth
+// geschuetzt. Schuetzt vor Auth-Brute-Force, ohne den echten Admin
+// auszusperren.
+const adminLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  max: 200,
+  standardHeaders: true,
+  legacyHeaders: false,
+});
+
+// Render terminiert TLS und schickt uns die Original-IP via x-forwarded-*.
+// Ohne "trust proxy" sieht Express alle Requests als von der Proxy-IP -- das
+// bricht (a) Stornier-Link-Bau aus dem Request, (b) jeden IP-basierten
+// Rate-Limiter. Auf "1" weil es vor uns genau einen Render-Hop gibt.
+app.set("trust proxy", 1);
+
+// Security-Header (helmet). CSP ist hier deaktiviert, weil die Storno-HTML-
+// Seiten und das admin-Panel inline <style>-Bloecke benutzen -- spaeter
+// koennen wir eine Nonce-basierte CSP nachruesten. Cross-Origin-Embedder-
+// Policy ist auch aus, damit Bilder/Fonts aus fremden Origins (Google
+// Fonts) im Browser nicht blockiert werden.
+app.use(
+  helmet({
+    contentSecurityPolicy: false,
+    crossOriginEmbedderPolicy: false,
+  })
+);
 
 app.use(express.json({ limit: "32kb" }));
 app.use(express.urlencoded({ extended: false, limit: "4kb" }));
@@ -268,7 +327,7 @@ function requireAdminAuth(req, res, next) {
 }
 
 /** GET /api/appointments – Admin-only Liste aller Buchungen. */
-app.get("/api/appointments", requireAdminAuth, async (_req, res) => {
+app.get("/api/appointments", adminLimiter, requireAdminAuth, async (_req, res) => {
   try {
     const appointments = await readAppointments();
     appointments.sort((a, b) => `${a.date}T${a.time}`.localeCompare(`${b.date}T${b.time}`));
@@ -280,7 +339,7 @@ app.get("/api/appointments", requireAdminAuth, async (_req, res) => {
 });
 
 /** POST /api/appointments */
-app.post("/api/appointments", async (req, res) => {
+app.post("/api/appointments", bookingLimiter, async (req, res) => {
   try {
     const validation = validateAppointment(req.body);
 
@@ -295,6 +354,60 @@ app.post("/api/appointments", async (req, res) => {
     const appointments = await readAppointments();
     const createdAt = new Date().toISOString();
 
+    // Doppel-Submit-Dedupe: Wenn der Kunde aus Versehen doppelt klickt oder
+    // der Browser einen Retry macht, koennen identische Buchungen in
+    // Sekundenabstand reinkommen. Wir betrachten gleiche (email, date,
+    // time, service) innerhalb von 60s als Duplikat und liefern den
+    // bestehenden Eintrag zurueck, statt einen neuen anzulegen.
+    const DEDUPE_WINDOW_MS = 60 * 1000;
+    const cutoff = Date.now() - DEDUPE_WINDOW_MS;
+    const duplicate = appointments.find(
+      (item) =>
+        item.email?.toLowerCase() === validation.data.email.toLowerCase() &&
+        item.date === validation.data.date &&
+        item.time === validation.data.time &&
+        item.service === validation.data.service &&
+        new Date(item.createdAt).getTime() >= cutoff
+    );
+    if (duplicate) {
+      console.log(
+        `[Termin] Duplikat ignoriert: ${duplicate.name} – ${duplicate.date} ${duplicate.time}`
+      );
+      return res.status(200).json({
+        success: true,
+        duplicate: true,
+        message:
+          "Wir haben Ihre Anfrage bereits erhalten – alles gut. Sie bekommen gleich (oder haben gerade schon) eine Eingangs-Mail von uns.",
+        appointment: {
+          id: duplicate.id,
+          name: duplicate.name,
+          email: duplicate.email,
+          date: duplicate.date,
+          time: duplicate.time,
+          service: duplicate.service,
+        },
+      });
+    }
+
+    // Slot-Konflikt-Erkennung: gibt es schon (mind.) einen offenen oder
+    // bestaetigten Termin zur exakt gleichen Uhrzeit? Wir blockieren NICHT
+    // (zwei Stylistinnen koennten parallel arbeiten), markieren den Termin
+    // aber als "konfliktbehaftet", damit der Salon im Admin entscheiden kann.
+    const conflicts = appointments
+      .filter(
+        (item) =>
+          item.date === validation.data.date &&
+          item.time === validation.data.time &&
+          !item.cancelled &&
+          !item.declined
+      )
+      .map((item) => ({
+        id: item.id,
+        name: item.name,
+        service: item.service,
+        confirmed: Boolean(item.confirmed),
+      }));
+
     const appointment = {
       id: randomUUID(),
       cancelToken: randomUUID(),
@@ -302,6 +415,8 @@ app.post("/api/appointments", async (req, res) => {
       createdAt,
       cancelled: false,
       cancelledAt: null,
+      // Slot-Konflikte mit anderen offenen/bestaetigten Terminen.
+      conflictsWith: conflicts,
       // Anfrage-Workflow: Salon bestaetigt oder lehnt ueber den Admin-Bereich ab.
       confirmed: false,
       confirmedAt: null,
@@ -450,7 +565,7 @@ async function findAppointmentById(id) {
  * Markiert den Termin als bestaetigt, sendet die Bestaetigungs-Mail
  * an den Kunden und plant die 24h-Erinnerung via Resend.
  */
-app.post("/api/admin/appointments/:id/confirm", requireAdminAuth, async (req, res) => {
+app.post("/api/admin/appointments/:id/confirm", adminLimiter, requireAdminAuth, async (req, res) => {
   try {
     const id = String(req.params.id || "");
     if (!id) {
@@ -558,7 +673,7 @@ app.post("/api/admin/appointments/:id/confirm", requireAdminAuth, async (req, re
  * Markiert den Termin als abgelehnt und sendet eine Absage-Mail
  * an den Kunden mit Bitte, einen anderen Termin anzufragen.
  */
-app.post("/api/admin/appointments/:id/decline", requireAdminAuth, async (req, res) => {
+app.post("/api/admin/appointments/:id/decline", adminLimiter, requireAdminAuth, async (req, res) => {
   try {
     const id = String(req.params.id || "");
     if (!id) {
@@ -647,6 +762,152 @@ app.post("/api/admin/appointments/:id/decline", requireAdminAuth, async (req, re
     });
   }
 });
+
+/**
+ * POST /api/admin/appointments/:id/cancel
+ * Salon-initiierte Stornierung eines bereits bestaetigten oder ausstehenden
+ * Termins. Sendet eine entschuldigende Absage-Mail an den Kunden und
+ * canceled die geplante 24h-Erinnerung.
+ */
+app.post(
+  "/api/admin/appointments/:id/cancel",
+  adminLimiter,
+  requireAdminAuth,
+  async (req, res) => {
+    try {
+      const id = String(req.params.id || "");
+      if (!id) {
+        return res.status(400).json({ success: false, message: "Termin-ID fehlt." });
+      }
+
+      const { appointments, appointment, index } = await findAppointmentById(id);
+
+      if (!appointment) {
+        return res.status(404).json({ success: false, message: "Termin nicht gefunden." });
+      }
+
+      if (appointment.cancelled) {
+        return res.status(200).json({
+          success: true,
+          message: "Termin war bereits storniert.",
+          appointment,
+        });
+      }
+
+      if (appointment.declined) {
+        return res.status(409).json({
+          success: false,
+          message: "Termin war bereits abgelehnt – Statuswechsel nicht moeglich.",
+        });
+      }
+
+      appointment.cancelled = true;
+      appointment.cancelledAt = new Date().toISOString();
+      appointment.cancelledByAdmin = true;
+
+      const baseUrl = deriveBaseUrl(req);
+
+      if (isEmailConfigured()) {
+        try {
+          const cancelResult = await sendAdminCancellationEmail(appointment, baseUrl);
+          appointment.adminCancellationStatus = cancelResult;
+        } catch (mailError) {
+          console.error("[Admin-Storno] E-Mail-Aktionen fehlgeschlagen:", mailError);
+          appointment.adminCancellationStatus = {
+            customer: {
+              sent: false,
+              sentAt: null,
+              error: String(mailError?.message || mailError),
+            },
+            reminderCancelled: false,
+            reminderCancelError: String(mailError?.message || mailError),
+          };
+        }
+      } else {
+        appointment.adminCancellationStatus = {
+          customer: { sent: false, sentAt: null, error: "E-Mail nicht konfiguriert." },
+          reminderCancelled: false,
+          reminderCancelError: null,
+        };
+      }
+
+      appointments[index] = appointment;
+      await writeAppointments(appointments);
+
+      console.log(
+        `[Admin-Storno] ${appointment.name} – ${appointment.date} ${appointment.time}` +
+          ` (Mail ${appointment.adminCancellationStatus.customer.sent ? "OK" : "FAIL"},` +
+          ` Reminder ${appointment.adminCancellationStatus.reminderCancelled ? "abgebrochen" : "skipped"})`
+      );
+
+      const customerOk = appointment.adminCancellationStatus.customer.sent;
+      if (!customerOk) {
+        return res.status(502).json({
+          success: false,
+          message: `Termin storniert, aber die Absage-Mail an den Kunden ist fehlgeschlagen: ${appointment.adminCancellationStatus.customer.error || "unbekannter Fehler"}`,
+          appointment,
+        });
+      }
+
+      return res.json({
+        success: true,
+        message: "Termin storniert – Absage-Mail an Kunde versendet.",
+        appointment,
+      });
+    } catch (error) {
+      console.error("Fehler bei /api/admin/.../cancel:", error);
+      res.status(500).json({
+        success: false,
+        message: "Stornierung fehlgeschlagen. Bitte erneut versuchen.",
+      });
+    }
+  }
+);
+
+/**
+ * DELETE /api/admin/appointments/:id
+ * Loescht den Termin permanent aus dem Speicher. Sendet keine Mail --
+ * dient nur zum Aufraeumen alter / fehlgeschlagener Eintraege im Admin-UI.
+ */
+app.delete(
+  "/api/admin/appointments/:id",
+  adminLimiter,
+  requireAdminAuth,
+  async (req, res) => {
+    try {
+      const id = String(req.params.id || "");
+      if (!id) {
+        return res.status(400).json({ success: false, message: "Termin-ID fehlt." });
+      }
+
+      const appointments = await readAppointments();
+      const index = appointments.findIndex((item) => item.id === id);
+
+      if (index === -1) {
+        return res.status(404).json({ success: false, message: "Termin nicht gefunden." });
+      }
+
+      const removed = appointments.splice(index, 1)[0];
+      await writeAppointments(appointments);
+
+      console.log(
+        `[Admin-Loeschen] ${removed.name} – ${removed.date} ${removed.time} (id ${removed.id})`
+      );
+
+      return res.json({
+        success: true,
+        message: "Termin gelöscht.",
+        appointment: { id: removed.id },
+      });
+    } catch (error) {
+      console.error("Fehler bei DELETE /api/admin/...:", error);
+      res.status(500).json({
+        success: false,
+        message: "Löschen fehlgeschlagen. Bitte erneut versuchen.",
+      });
+    }
+  }
+);
 
 /* ---------------- Stornier-Flow ---------------- */
 
@@ -797,7 +1058,7 @@ function renderStornoError() {
 }
 
 /** GET /storno/:token – Bestaetigungsseite */
-app.get("/storno/:token", async (req, res) => {
+app.get("/storno/:token", cancelLimiter, async (req, res) => {
   try {
     const token = String(req.params.token || "");
     if (!token) {
@@ -823,7 +1084,7 @@ app.get("/storno/:token", async (req, res) => {
 });
 
 /** POST /storno/:token – fuehrt die Stornierung aus */
-app.post("/storno/:token", async (req, res) => {
+app.post("/storno/:token", cancelLimiter, async (req, res) => {
   try {
     const token = String(req.params.token || "");
     if (!token) {

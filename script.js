@@ -83,9 +83,17 @@ const readJsonResponse = async (response) => {
 
 /**
  * Sendet Terminanfrage an das Express-Backend.
+ *
+ * Guard `isSubmitting` verhindert zusaetzlich zum disabled-Button, dass
+ * der Handler waehrend eines laufenden Requests erneut feuert (z.B. wenn
+ * der Kunde Enter doppelt drueckt, bevor das Disable wirkt).
  */
+let isSubmitting = false;
+
 bookingForm.addEventListener("submit", async (event) => {
   event.preventDefault();
+  if (isSubmitting) return;
+  isSubmitting = true;
 
   const formData = new FormData(bookingForm);
   const payload = {
@@ -137,5 +145,6 @@ bookingForm.addEventListener("submit", async (event) => {
   } finally {
     bookingForm.classList.remove("is-submitting");
     submitBtn.disabled = false;
+    isSubmitting = false;
   }
 });
