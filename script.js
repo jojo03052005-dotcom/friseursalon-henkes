@@ -58,6 +58,54 @@ const setMinBookingDate = () => {
 setMinBookingDate();
 
 /**
+ * Holt die aktuelle Service-Liste vom Backend und ersetzt die Optionen im
+ * <select>, falls sie sich geaendert haben. Schlaegt der Fetch fehl (z.B.
+ * Render-Cold-Start), bleibt die statische Default-Liste aus dem HTML
+ * stehen -- der Kunde kann ganz normal buchen.
+ */
+const syncServiceOptions = async () => {
+  const select = bookingForm?.querySelector('select[name="service"]');
+  if (!select) return;
+
+  try {
+    const response = await fetch(`${API_BASE}/api/services`, {
+      headers: { Accept: "application/json" },
+    });
+    if (!response.ok) return;
+    const data = await response.json();
+    if (!data?.success || !Array.isArray(data.services)) return;
+
+    const current = Array.from(select.options)
+      .filter((opt) => opt.value)
+      .map((opt) => opt.value);
+
+    if (
+      current.length === data.services.length &&
+      current.every((value, index) => value === data.services[index])
+    ) {
+      return;
+    }
+
+    const previous = select.value;
+    const escapeAttr = (s) => String(s).replace(/&/g, "&amp;").replace(/"/g, "&quot;");
+    const escapeText = (s) =>
+      String(s).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+    select.innerHTML =
+      '<option value="">Bitte auswählen</option>' +
+      data.services
+        .map((s) => `<option value="${escapeAttr(s)}">${escapeText(s)}</option>`)
+        .join("");
+    if (previous && data.services.includes(previous)) {
+      select.value = previous;
+    }
+  } catch (_err) {
+    // Bewusst still: Default-Optionen aus dem HTML bleiben funktionsfaehig.
+  }
+};
+
+syncServiceOptions();
+
+/**
  * Zeigt Feedback unter dem Formular (Erfolg, Fehler, Laden).
  */
 const showFormFeedback = (type, text) => {

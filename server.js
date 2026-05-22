@@ -32,6 +32,11 @@ const DEFAULT_ALLOWED_ORIGINS = [
   "https://friseursalon-henkes-website.netlify.app",
 ];
 
+// Die maßgebliche Liste der Leistungen. Wird via GET /api/services auch ans
+// Frontend ausgeliefert, damit das Auswahlfeld nicht out-of-sync laeuft.
+// Wenn der Salon eine neue Leistung anbietet -> hier ergaenzen, fertig.
+// (Die Preise in index.html#preise sind statisch und muessen separat
+// gepflegt werden, das ist ein anderer Use-Case.)
 const ALLOWED_SERVICES = [
   "Haarschnitt",
   "Färbung",
@@ -155,6 +160,17 @@ app.get("/api/health", (_req, res) => {
     service: "friseursalon-henkes-backend",
     emailConfigured: isEmailConfigured(),
   });
+});
+
+/**
+ * Liefert die Liste der buchbaren Leistungen. Frontend zieht das beim
+ * Laden, damit das <select> auf der Buchungsseite immer synchron mit der
+ * Server-Validierung ist. Frontend hat eine eingebaute Default-Liste als
+ * Fallback fuer den Fall dass das Backend gerade schlaeft.
+ */
+app.get("/api/services", (_req, res) => {
+  res.set("Cache-Control", "public, max-age=300"); // 5 Min cache
+  res.json({ success: true, services: ALLOWED_SERVICES });
 });
 
 async function readAppointments() {
