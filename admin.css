@@ -408,3 +408,95 @@
     flex: 1;
   }
 }
+
+/* ---------------- Mobile: Tabelle -> Card-Layout ---------------- */
+/*
+ * Auf Mobile ist eine 10-spaltige Tabelle nicht nutzbar -- horizontales
+ * Scrollen ist ein UX-Killer. Wir blenden den <thead> aus und stylen jede
+ * <tr> als Karte. Die "Spaltenueberschriften" kommen via data-label-
+ * Attribute, die das JS beim Rendern setzt -- siehe admin.js
+ * renderRows().
+ */
+@media (max-width: 760px) {
+  .admin-table-scroll {
+    overflow-x: visible;
+  }
+
+  .admin-table {
+    min-width: 0;
+  }
+
+  .admin-table thead {
+    display: none;
+  }
+
+  .admin-table,
+  .admin-table tbody,
+  .admin-table tr,
+  .admin-table td {
+    display: block;
+    width: 100%;
+  }
+
+  .admin-table tr {
+    margin-bottom: 14px;
+    padding: 14px 16px;
+    border: 1px solid var(--line);
+    border-radius: 8px;
+    background: var(--white);
+    box-shadow: 0 4px 14px rgba(36, 23, 19, 0.05);
+  }
+
+  .admin-table tbody tr:last-child {
+    margin-bottom: 0;
+  }
+
+  .admin-table tbody tr:hover {
+    background: var(--white);
+  }
+
+  .admin-table td {
+    padding: 6px 0;
+    border-bottom: 0;
+  }
+
+  .admin-table td::before {
+    content: attr(data-label);
+    display: block;
+    margin-bottom: 2px;
+    color: var(--brown);
+    font-size: 0.68rem;
+    font-weight: 800;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+  }
+
+  /* Status- und Aktionsbereich vom Rest absetzen */
+  .admin-table td[data-label="Status"],
+  .admin-table td[data-label="Aktionen"] {
+    margin-top: 6px;
+    padding-top: 10px;
+    border-top: 1px solid var(--line);
+  }
+
+  /* Notizen-Box nicht doppelt umrahmen */
+  .admin-notes {
+    max-width: 100%;
+  }
+
+  /* Aktionen-Buttons groesser fuer Touch */
+  .admin-action-btn {
+    padding: 8px 14px;
+    font-size: 0.85rem;
+  }
+
+  /* Strike-through aus auf Karten (sieht beschissen aus, status reicht) */
+  .admin-table tr.is-cancelled td:not(:last-child),
+  .admin-table tr.is-declined td:not(:last-child) {
+    text-decoration: none;
+  }
+  .admin-table tr.is-cancelled td[data-label="Name"],
+  .admin-table tr.is-declined td[data-label="Name"] {
+    opacity: 0.55;
+  }
+}

@@ -262,24 +262,24 @@ const renderRows = (appointments) => {
           : "";
       return `
         <tr${rowClass}>
-          <td>${formatDate(item.date)}${conflictBadge ? "<br>" + conflictBadge : ""}</td>
-          <td>${item.time} Uhr</td>
-          <td><strong>${escapeHtml(item.name)}</strong></td>
-          <td>
+          <td data-label="Datum">${formatDate(item.date)}${conflictBadge ? "<br>" + conflictBadge : ""}</td>
+          <td data-label="Uhrzeit">${item.time} Uhr</td>
+          <td data-label="Name"><strong>${escapeHtml(item.name)}</strong></td>
+          <td data-label="Telefon">
             <a class="admin-phone" href="tel:${escapeHtml(String(item.phone).replace(/\s/g, ""))}">
               ${escapeHtml(item.phone)}
             </a>
           </td>
-          <td>
+          <td data-label="E-Mail">
             <a class="admin-email" href="mailto:${escapeHtml(item.email || "")}">
               ${escapeHtml(item.email || "—")}
             </a>
           </td>
-          <td>${escapeHtml(item.service)}</td>
-          <td>${notesHtml}</td>
-          <td>${formatCreated(item.createdAt)}</td>
-          <td>${renderStatusCell(item)}</td>
-          <td>${renderActionsCell(item)}</td>
+          <td data-label="Leistung">${escapeHtml(item.service)}</td>
+          <td data-label="Notizen">${notesHtml}</td>
+          <td data-label="Eingegangen">${formatCreated(item.createdAt)}</td>
+          <td data-label="Status">${renderStatusCell(item)}</td>
+          <td data-label="Aktionen">${renderActionsCell(item)}</td>
         </tr>`;
       })
       .join("");
