@@ -119,6 +119,89 @@ function germanLocalToISOString(dateStr, timeStr) {
 }
 
 /**
+ * Default-Dauern pro Leistung, in Minuten. Wird fuer den ICS-Kalender-
+ * Eintrag benoetigt (sonst weiss die Kalender-App nicht, wie lang der
+ * Block belegt sein soll). Werte sind grosszuegig geschaetzt; der Salon
+ * kann das beim Termin anpassen.
+ */
+const SERVICE_DURATIONS_MINUTES = {
+  Haarschnitt: 45,
+  Färbung: 90,
+  Strähnen: 120,
+  Styling: 60,
+  Haarpflege: 45,
+};
+const DEFAULT_DURATION_MINUTES = 60;
+
+/**
+ * Formatiert ein Date als UTC fuer das ICS-Format (YYYYMMDDTHHMMSSZ).
+ */
+function toICSUtc(date) {
+  return date.toISOString().replace(/[-:]/g, "").replace(/\.\d{3}/, "");
+}
+
+/**
+ * Baut eine ICS-Datei (RFC 5545) als Buffer fuer den Mail-Anhang.
+ * Kunde klickt -> Kalender-App oeffnet sich mit dem Termin vorausgefuellt.
+ */
+function buildICSAttachment(appointment) {
+  const startIso = germanLocalToISOString(appointment.date, appointment.time);
+  if (!startIso) return null;
+
+  const start = new Date(startIso);
+  const durationMin =
+    SERVICE_DURATIONS_MINUTES[appointment.service] || DEFAULT_DURATION_MINUTES;
+  const end = new Date(start.getTime() + durationMin * 60 * 1000);
+  const now = new Date();
+
+  // Description: ICS verlangt CRLF und escapete Sonderzeichen
+  // (Komma, Backslash, Semikolon, Newline).
+  const escapeICS = (s) =>
+    String(s ?? "")
+      .replace(/\\/g, "\\\\")
+      .replace(/;/g, "\\;")
+      .replace(/,/g, "\\,")
+      .replace(/\n/g, "\\n");
+
+  const description = [
+    `Leistung: ${appointment.service}`,
+    `Salon: ${SALON.name}`,
+    `Adresse: ${SALON.address}, ${SALON.city}`,
+    `Telefon: ${SALON.phone}`,
+    appointment.notes ? `Ihre Notiz: ${appointment.notes}` : null,
+  ]
+    .filter(Boolean)
+    .join("\\n");
+
+  const lines = [
+    "BEGIN:VCALENDAR",
+    "VERSION:2.0",
+    "PRODID:-//Friseursalon Henkes//Buchung//DE",
+    "CALSCALE:GREGORIAN",
+    "METHOD:PUBLISH",
+    "BEGIN:VEVENT",
+    `UID:${appointment.id}@friseursalon-henkes`,
+    `DTSTAMP:${toICSUtc(now)}`,
+    `DTSTART:${toICSUtc(start)}`,
+    `DTEND:${toICSUtc(end)}`,
+    `SUMMARY:${escapeICS(`Friseur-Termin: ${appointment.service}`)}`,
+    `LOCATION:${escapeICS(`${SALON.address}, ${SALON.city}`)}`,
+    `DESCRIPTION:${description}`,
+    "STATUS:CONFIRMED",
+    "BEGIN:VALARM",
+    "TRIGGER:-PT2H",
+    "ACTION:DISPLAY",
+    `DESCRIPTION:Erinnerung – Friseur-Termin bei ${escapeICS(SALON.name)}`,
+    "END:VALARM",
+    "END:VEVENT",
+    "END:VCALENDAR",
+  ];
+
+  // ICS verlangt CRLF zwischen den Zeilen
+  return Buffer.from(lines.join("\r\n"), "utf8");
+}
+
+/**
  * Berechnet wann die 24h-Erinnerung gesendet werden soll.
  * Gibt { scheduledFor, skipReason } zurueck.
  */
@@ -893,8 +976,19 @@ async function sendConfirmationEmail(appointment, baseUrl) {
   };
 
   const confirmedMail = buildConfirmedEmail(appointment, effectiveBaseUrl);
+  const icsBuffer = buildICSAttachment(appointment);
+  const attachments = icsBuffer
+    ? [
+        {
+          filename: "termin.ics",
+          content: icsBuffer.toString("base64"),
+          contentType: "text/calendar; charset=utf-8; method=PUBLISH",
+        },
+      ]
+    : undefined;
 
-  // 1. Bestaetigungs-Mail
+  // 1. Bestaetigungs-Mail (mit ICS-Anhang -- ein Klick und der Termin
+  //    steht im Kalender des Kunden, inkl. 2h-Vorab-Erinnerung)
   try {
     const { error } = await resend.emails.send({
       from: config.from,
@@ -903,6 +997,7 @@ async function sendConfirmationEmail(appointment, baseUrl) {
       subject: confirmedMail.subject,
       text: confirmedMail.text,
       html: confirmedMail.html,
+      attachments,
     });
     if (error) throw error;
     status.customer.sent = true;
