@@ -27,6 +27,26 @@ const PORT = process.env.PORT || 3000;
 const ROOT = __dirname;
 const DATA_DIR = path.join(ROOT, "data");
 const APPOINTMENTS_FILE = path.join(DATA_DIR, "appointments.json");
+const CLOSED_DAYS_FILE = path.join(DATA_DIR, "closed-days.json");
+
+// Wie weit in die Zukunft Buchungen erlaubt sind. 90 Tage decken
+// realistische Vorausplanung ab, blockieren aber "Buche mich am
+// 31.12.2030"-Spass.
+const MAX_BOOKING_HORIZON_DAYS = 90;
+
+// Salon-Oeffnungszeiten pro Wochentag (0=So .. 6=Sa). Wenn der Wochentag
+// nicht im Objekt steht -> Salon zu. Wenn ja, muss die gewuenschte
+// Uhrzeit im [openMinutes, closeMinutes)-Fenster liegen. Werte sind
+// Minuten seit Mitternacht.
+const SALON_HOURS = {
+  // Mo (1) = zu -- klassischer Friseur-Ruhetag
+  2: { open: 9 * 60, close: 18 * 60 }, // Di
+  3: { open: 9 * 60, close: 18 * 60 }, // Mi
+  4: { open: 9 * 60, close: 18 * 60 }, // Do
+  5: { open: 9 * 60, close: 18 * 60 }, // Fr
+  6: { open: 8 * 60, close: 14 * 60 }, // Sa
+  // So (0) = zu (gesetzlich, plus Tradition)
+};
 // Name der Netlify-Site (Produktions-Slug). Wenn die Site umbenannt wird,
 // hier aendern -- dann passen Produktion UND alle Deploy-Previews automatisch.
 const NETLIFY_SITE = "friseursalon-henkes-website";
@@ -75,14 +95,24 @@ const EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/i;
 const PHONE_ALLOWED_CHARS = /^[\d\s+\-/()]+$/;
 const MAX_NOTES_LENGTH = 500;
 
-// In Deutschland sind Friseure sonntags zu (Ladenschlussgesetz). Schluss-
-// blockade gegen Test-/Fehl-Buchungen. Wenn der Salon ALSo zusaetzlich
-// montags zu hat, einfach 1 (Montag) ergaenzen. Sonntag = 0.
-const CLOSED_WEEKDAYS = new Set([0]);
-
 // Wir akzeptieren nur Slots im 15-Minuten-Raster (HH:00, HH:15, HH:30, HH:45).
 // Krumme Zeiten wie 14:37 deuten auf Tipper oder Bot.
 const ALLOWED_MINUTES = new Set(["00", "15", "30", "45"]);
+
+/**
+ * Liest die Schliesstage-Liste (Feiertage, Betriebsferien) aus
+ * data/closed-days.json. Datei fehlt oder ungueltig? -> leer.
+ * Wird einmal pro Validierung gelesen -- klein genug fuer JSON.
+ */
+async function readClosedDays() {
+  try {
+    const raw = await fs.readFile(CLOSED_DAYS_FILE, "utf8");
+    const data = JSON.parse(raw);
+    return new Set(Array.isArray(data.days) ? data.days : []);
+  } catch (_err) {
+    return new Set();
+  }
+}
 
 /* ---------------- Rate-Limiting ---------------- */
 
@@ -221,7 +251,7 @@ async function writeAppointments(appointments) {
   await fs.rename(tempFile, APPOINTMENTS_FILE);
 }
 
-function validateAppointment(payload) {
+async function validateAppointment(payload) {
   const errors = [];
   const name = typeof payload.name === "string" ? payload.name.trim() : "";
   const phone = typeof payload.phone === "string" ? payload.phone.trim() : "";
@@ -258,6 +288,7 @@ function validateAppointment(payload) {
   const dateMatch = /^\d{4}-\d{2}-\d{2}$/.test(date);
   let dateIsValid = false;
   let parsedDate = null;
+  let weekdayHours = null;
   if (!dateMatch) {
     errors.push("Bitte wählen Sie ein gültiges Datum.");
   } else {
@@ -267,14 +298,31 @@ function validateAppointment(payload) {
     } else {
       const today = new Date();
       today.setHours(0, 0, 0, 0);
+      const maxDate = new Date(today.getTime() + MAX_BOOKING_HORIZON_DAYS * 24 * 60 * 60 * 1000);
+
       if (parsedDate < today) {
         errors.push("Das Datum darf nicht in der Vergangenheit liegen.");
-      } else if (CLOSED_WEEKDAYS.has(parsedDate.getDay())) {
+      } else if (parsedDate > maxDate) {
         errors.push(
-          "An diesem Wochentag ist der Salon geschlossen. Bitte wählen Sie einen anderen Tag."
+          `Termine können maximal ${MAX_BOOKING_HORIZON_DAYS} Tage im Voraus gebucht werden. Bei späteren Wünschen bitte kurz anrufen.`
         );
       } else {
-        dateIsValid = true;
+        weekdayHours = SALON_HOURS[parsedDate.getDay()];
+        if (!weekdayHours) {
+          errors.push(
+            "An diesem Wochentag ist der Salon geschlossen. Bitte wählen Sie Di–Sa."
+          );
+        } else {
+          // Pruefe Schliesstage (Feiertage, Betriebsferien)
+          const closedDays = await readClosedDays();
+          if (closedDays.has(date)) {
+            errors.push(
+              "An diesem Tag ist der Salon geschlossen (Feiertag oder Betriebsferien). Bitte wählen Sie einen anderen Tag."
+            );
+          } else {
+            dateIsValid = true;
+          }
+        }
       }
     }
   }
@@ -287,6 +335,19 @@ function validateAppointment(payload) {
     if (!ALLOWED_MINUTES.has(mm)) {
       errors.push("Bitte wählen Sie eine Uhrzeit im 15-Minuten-Raster (z.B. 10:00, 10:15).");
     }
+
+    // Pro Wochentag andere Oeffnungszeiten (Samstag schliesst um 14:00).
+    if (dateIsValid && weekdayHours) {
+      const requestedMinutes = Number(hh) * 60 + Number(mm);
+      if (requestedMinutes < weekdayHours.open || requestedMinutes >= weekdayHours.close) {
+        const fmt = (mins) =>
+          `${String(Math.floor(mins / 60)).padStart(2, "0")}:${String(mins % 60).padStart(2, "0")}`;
+        errors.push(
+          `An diesem Tag haben wir von ${fmt(weekdayHours.open)} bis ${fmt(weekdayHours.close)} Uhr geöffnet. Bitte wählen Sie eine Uhrzeit in diesem Fenster.`
+        );
+      }
+    }
+
     // Wenn der gewuenschte Termin heute ist, darf die Uhrzeit nicht in der
     // Vergangenheit liegen (mind. 60 Min Vorlauf, damit der Salon reagieren kann).
     if (dateIsValid && parsedDate) {
@@ -479,7 +540,7 @@ app.post("/api/appointments", bookingLimiter, async (req, res) => {
       });
     }
 
-    const validation = validateAppointment(req.body);
+    const validation = await validateAppointment(req.body);
 
     if (!validation.ok) {
       return res.status(400).json({
