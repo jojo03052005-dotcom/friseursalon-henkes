@@ -659,6 +659,21 @@ h3 {
   gap: 16px;
 }
 
+/* Honeypot — fuer Menschen unsichtbar, Bots fuellen es aus und werden
+   damit serverseitig still ignoriert. Mehrere Layer (display:none +
+   visibility:hidden + position) als Defense-in-Depth gegen Bots, die
+   eines davon ueberschreiben. */
+.hp-field {
+  position: absolute;
+  left: -9999px;
+  top: -9999px;
+  width: 1px;
+  height: 1px;
+  opacity: 0;
+  pointer-events: none;
+  visibility: hidden;
+}
+
 .booking-form label {
   display: grid;
   gap: 7px;

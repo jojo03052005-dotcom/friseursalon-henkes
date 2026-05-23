@@ -465,6 +465,20 @@ app.get("/api/admin/backup", adminLimiter, requireAdminAuth, async (_req, res) =
 /** POST /api/appointments */
 app.post("/api/appointments", bookingLimiter, async (req, res) => {
   try {
+    // Honeypot: das Feld "website" ist im HTML versteckt. Echte Kunden
+    // sehen es nie, Bots aber fuellen alle Felder aus. Wenn das Feld
+    // einen Wert hat, antworten wir mit einem freundlichen 200 (damit
+    // der Bot nicht weiss dass er erkannt wurde) -- legen aber nichts
+    // an und senden keine Mail.
+    const honeypot = typeof req.body?.website === "string" ? req.body.website.trim() : "";
+    if (honeypot.length > 0) {
+      console.warn(`[Honeypot] Bot-Submit ignoriert (website='${honeypot.slice(0, 40)}')`);
+      return res.status(200).json({
+        success: true,
+        message: "Vielen Dank! Wir haben Ihre Anfrage erhalten.",
+      });
+    }
+
     const validation = validateAppointment(req.body);
 
     if (!validation.ok) {

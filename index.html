@@ -374,6 +374,15 @@
         <p class="section-kicker">Terminbuchung</p>
         <h2>Wunschtermin anfragen</h2>
         <form class="booking-form" data-booking-form novalidate aria-describedby="booking-form-status">
+          <!--
+            Honeypot gegen Bots: dieses Feld ist fuer Menschen unsichtbar
+            (display:none + aria-hidden + tabindex=-1 + autocomplete=off).
+            Bots, die einfach alle Felder ausfuellen, taggen sich damit
+            selbst. Der Server ignoriert solche Submissions still.
+            Name absichtlich "website" gewaehlt, weil Spam-Bots danach
+            besonders gerne greifen.
+          -->
+          <input type="text" name="website" class="hp-field" tabindex="-1" autocomplete="off" aria-hidden="true">
           <label>
             Name
             <input type="text" name="name" placeholder="Ihr Name" autocomplete="name" required aria-required="true">
