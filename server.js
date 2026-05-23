@@ -427,6 +427,41 @@ app.get("/api/appointments", adminLimiter, requireAdminAuth, async (_req, res) =
   }
 });
 
+/**
+ * GET /api/admin/backup
+ *
+ * Liefert die rohen appointments.json als Download. Lebenswichtig solange
+ * der Render-Free-Tier nutzt -- der Filesystem-Storage ist ephemer und
+ * jeder Deploy wischt die Datei. Mit diesem Endpoint kann sich der Salon
+ * regelmaessig (oder vor einem Deploy) ein Backup runterladen.
+ *
+ * Wenn man's automatisieren will: einfach von cron-job.org aus alle paar
+ * Stunden pullen und in einem Cloud-Storage-Bucket ablegen (Auth via
+ * Basic-Auth in der URL: https://user:pass@host/api/admin/backup).
+ */
+app.get("/api/admin/backup", adminLimiter, requireAdminAuth, async (_req, res) => {
+  try {
+    const appointments = await readAppointments();
+    const filename = `henkes-backup-${new Date().toISOString().slice(0, 10)}.json`;
+    res.setHeader("Content-Type", "application/json; charset=utf-8");
+    res.setHeader("Content-Disposition", `attachment; filename="${filename}"`);
+    res.send(
+      JSON.stringify(
+        {
+          exportedAt: new Date().toISOString(),
+          count: appointments.length,
+          appointments,
+        },
+        null,
+        2
+      )
+    );
+  } catch (error) {
+    console.error("Fehler beim Backup-Export:", error);
+    res.status(500).json({ success: false, message: "Backup-Export fehlgeschlagen." });
+  }
+});
+
 /** POST /api/appointments */
 app.post("/api/appointments", bookingLimiter, async (req, res) => {
   try {
