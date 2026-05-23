@@ -1420,6 +1420,23 @@ app.post("/storno/:token", cancelLimiter, async (req, res) => {
   }
 });
 
+/* ---------------- 404 / Fallback ---------------- */
+
+/**
+ * Catch-all am Schluss: alles, was bis hier nicht gematcht hat, kriegt
+ * unsere schoene 404-Seite. Fuer /api/* geben wir JSON zurueck statt HTML,
+ * damit Aufrufer (Frontend, externe Tools) den Fehler verstehen.
+ */
+app.use((req, res) => {
+  if (req.path.startsWith("/api/")) {
+    return res.status(404).json({
+      success: false,
+      message: `Endpoint nicht gefunden: ${req.method} ${req.path}`,
+    });
+  }
+  res.status(404).sendFile(path.join(ROOT, "404.html"));
+});
+
 app.listen(PORT, () => {
   console.log("");
   console.log("  Friseursalon Henkes – Server läuft");
