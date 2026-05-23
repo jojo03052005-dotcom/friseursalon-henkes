@@ -8,6 +8,32 @@ const submitBtn = document.querySelector("[data-submit-btn]");
 
 const API_BASE = window.HENKES_API_BASE || window.location.origin;
 
+/**
+ * Render-Free-Tier schlaeft nach 15 Min ohne Traffic. Beim ersten Klick auf
+ * "Anfrage senden" wuerde der Kunde sonst 30-60 Sek warten.
+ *
+ * Trick: sobald der Kunde die Seite oeffnet, schicken wir im Hintergrund
+ * (best-effort, keine Fehler-Anzeige) einen Ping auf /api/health -- das
+ * weckt den Server. Bis der Kunde das Formular ausgefuellt hat, ist der
+ * Server warm und der Submit ist sofort durch. Reine UX-Verbesserung,
+ * kostet nichts wenn der Server eh schon laeuft.
+ *
+ * Wir warten 800ms bis der erste Render gerendert ist, um nicht mit
+ * Font-/Image-Loads zu konkurrieren.
+ */
+window.setTimeout(() => {
+  fetch(`${API_BASE}/api/health`, {
+    method: "GET",
+    cache: "no-store",
+    // keepalive: damit der Request ueberlebt, falls der User direkt zur
+    // naechsten Seite scrollt/wechselt
+    keepalive: true,
+  }).catch(() => {
+    // Bewusst still -- wenn das Wake-up fehlschlaegt, ist das egal.
+    // Der spaetere Submit triggert das normale Cold-Start-UX.
+  });
+}, 800);
+
 const updateHeader = () => {
   header.classList.toggle("is-scrolled", window.scrollY > 24);
 };
