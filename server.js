@@ -27,11 +27,33 @@ const PORT = process.env.PORT || 3000;
 const ROOT = __dirname;
 const DATA_DIR = path.join(ROOT, "data");
 const APPOINTMENTS_FILE = path.join(DATA_DIR, "appointments.json");
+// Name der Netlify-Site (Produktions-Slug). Wenn die Site umbenannt wird,
+// hier aendern -- dann passen Produktion UND alle Deploy-Previews automatisch.
+const NETLIFY_SITE = "friseursalon-henkes-website";
+
 const DEFAULT_ALLOWED_ORIGINS = [
   "http://localhost:3000",
   "http://127.0.0.1:3000",
-  "https://friseursalon-henkes-website.netlify.app",
+  `https://${NETLIFY_SITE}.netlify.app`,
 ];
+
+// Pattern fuer Netlify-Deploy-Previews und Branch-Deploys, z.B.
+//   https://deploy-preview-8--friseursalon-henkes-website.netlify.app
+//   https://branchname--friseursalon-henkes-website.netlify.app
+// Damit kann jeder PR vor Merge auf einer Live-URL gegen das echte Backend
+// getestet werden. Der $-Anchor verhindert Spoofing wie
+// "...netlify.app.attacker.com". Site-Name hat keine Regex-Sonderzeichen
+// (nur a-z, Bindestrich), darum keine Escape-Logik noetig.
+const NETLIFY_PREVIEW_REGEX = new RegExp(
+  `^https://[a-z0-9-]+--${NETLIFY_SITE}\\.netlify\\.app$`
+);
+
+function isAllowedOrigin(origin, exactSet) {
+  if (!origin) return false;
+  if (exactSet.has(origin)) return true;
+  if (NETLIFY_PREVIEW_REGEX.test(origin)) return true;
+  return false;
+}
 
 // Die maßgebliche Liste der Leistungen. Wird via GET /api/services auch ans
 // Frontend ausgeliefert, damit das Auswahlfeld nicht out-of-sync laeuft.
@@ -130,13 +152,16 @@ app.use((req, res, next) => {
       .filter(Boolean),
   ]);
 
-  if (origin && allowedOrigins.has(origin)) {
+  if (isAllowedOrigin(origin, allowedOrigins)) {
     res.setHeader("Access-Control-Allow-Origin", origin);
   }
 
   res.setHeader("Vary", "Origin");
-  res.setHeader("Access-Control-Allow-Methods", "GET,POST,OPTIONS");
-  res.setHeader("Access-Control-Allow-Headers", "Content-Type");
+  // DELETE ist fuer den Admin-Loesch-Endpoint dabei. Authorization fuer
+  // Basic-Auth-Header bei evtl. zukuenftigen Cross-Origin-Admin-Calls
+  // (aktuell sitzen Admin und Backend auf gleicher Origin, schadet nicht).
+  res.setHeader("Access-Control-Allow-Methods", "GET,POST,DELETE,OPTIONS");
+  res.setHeader("Access-Control-Allow-Headers", "Content-Type,Authorization");
 
   if (req.method === "OPTIONS") {
     return res.sendStatus(204);
