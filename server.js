@@ -43,6 +43,9 @@ const {
 } = require("./services/emailService");
 
 const { escapeHtml } = require("./lib/escape");
+const logger = require("./lib/logger");
+
+const log = logger.child("server");
 
 const app = express();
 const PORT = process.env.PORT || 3000;
@@ -488,7 +491,7 @@ app.post("/api/appointments", bookingLimiter, async (req, res) => {
     // an und senden keine Mail.
     const honeypot = typeof req.body?.website === "string" ? req.body.website.trim() : "";
     if (honeypot.length > 0) {
-      console.warn(`[Honeypot] Bot-Submit ignoriert (website='${honeypot.slice(0, 40)}')`);
+      log.warn("honeypot_triggered", { sample: honeypot.slice(0, 40) });
       return res.status(200).json({
         success: true,
         message: "Vielen Dank! Wir haben Ihre Anfrage erhalten.",
@@ -1383,17 +1386,48 @@ app.use((req, res) => {
   res.status(404).sendFile(path.join(ROOT_DIR, "404.html"));
 });
 
-app.listen(PORT, () => {
-  console.log("");
-  console.log("  Friseursalon Henkes – Server läuft");
-  console.log("  ---------------------------------");
-  console.log(`  Website:  http://localhost:${PORT}/`);
-  console.log(`  Termin:   http://localhost:${PORT}/#termin`);
-  console.log(`  Admin:    http://localhost:${PORT}/admin.html`);
-  console.log(
-    isEmailConfigured()
-      ? "  E-Mail:   Resend konfiguriert"
-      : "  E-Mail:   WARNUNG – .env fehlt (RESEND_API_KEY, SALON_EMAIL)"
-  );
-  console.log("");
+const server = app.listen(PORT, () => {
+  log.info("server_started", {
+    port: PORT,
+    env: process.env.NODE_ENV || "development",
+    emailConfigured: isEmailConfigured(),
+    pid: process.pid,
+  });
+  if (!isEmailConfigured()) {
+    log.warn("email_not_configured", {
+      hint: "RESEND_API_KEY and SALON_EMAIL must be set for email delivery",
+    });
+  }
 });
+
+/* ---------------- Graceful shutdown ---------------- */
+
+/**
+ * Render schickt SIGTERM bei Deploys. Ohne sauberen Shutdown koennen
+ * laufende Requests abgehackt werden und atomare File-Writes ggf. im
+ * .tmp-Zustand stecken bleiben (-> nicht-existente appointments.json
+ * beim naechsten Start). Mit close() warten wir die offenen Requests
+ * ab und stoppen dann.
+ */
+function gracefulShutdown(signal) {
+  log.info("shutdown_requested", { signal });
+  // 10s Hard-Timeout: wenn Requests haengen, trotzdem rausgehen.
+  // Render gibt 30s zwischen SIGTERM und SIGKILL.
+  const forceTimer = setTimeout(() => {
+    log.error("shutdown_forced", { reason: "timeout after 10s" });
+    process.exit(1);
+  }, 10000);
+  forceTimer.unref();
+
+  server.close((err) => {
+    if (err) {
+      log.error("shutdown_error", { error: String(err.message || err) });
+      process.exit(1);
+    }
+    log.info("shutdown_complete", {});
+    process.exit(0);
+  });
+}
+
+process.on("SIGTERM", () => gracefulShutdown("SIGTERM"));
+process.on("SIGINT", () => gracefulShutdown("SIGINT"));
