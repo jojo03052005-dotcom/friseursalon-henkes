@@ -42,6 +42,8 @@ const {
   isEmailConfigured,
 } = require("./services/emailService");
 
+const { escapeHtml } = require("./lib/escape");
+
 const app = express();
 const PORT = process.env.PORT || 3000;
 
@@ -1139,14 +1141,6 @@ app.get("/api/cron/daily-digest", async (req, res) => {
 });
 
 /* ---------------- Stornier-Flow ---------------- */
-
-function escapeHtml(value) {
-  return String(value ?? "")
-    .replace(/&/g, "&amp;")
-    .replace(/</g, "&lt;")
-    .replace(/>/g, "&gt;")
-    .replace(/"/g, "&quot;");
-}
 
 function formatGermanDate(isoDate) {
   const date = new Date(`${isoDate}T12:00:00`);

@@ -30,6 +30,7 @@ const {
   SERVICE_DURATIONS_MINUTES,
   DEFAULT_SERVICE_DURATION_MINUTES,
 } = require("../lib/config");
+const { escapeHtml, escapeIcs } = require("../lib/escape");
 
 const DEFAULT_FROM = `${SALON.name} <onboarding@resend.dev>`;
 
@@ -67,14 +68,6 @@ function formatGermanDate(isoDate) {
     month: "long",
     year: "numeric",
   });
-}
-
-function escapeHtml(value) {
-  return String(value ?? "")
-    .replace(/&/g, "&amp;")
-    .replace(/</g, "&lt;")
-    .replace(/>/g, "&gt;")
-    .replace(/"/g, "&quot;");
 }
 
 function buildCancelUrl(baseUrl, token) {
@@ -138,14 +131,7 @@ function buildICSAttachment(appointment) {
   const now = new Date();
 
   // Description: ICS verlangt CRLF und escapete Sonderzeichen
-  // (Komma, Backslash, Semikolon, Newline).
-  const escapeICS = (s) =>
-    String(s ?? "")
-      .replace(/\\/g, "\\\\")
-      .replace(/;/g, "\\;")
-      .replace(/,/g, "\\,")
-      .replace(/\n/g, "\\n");
-
+  // (Komma, Backslash, Semikolon, Newline) -- siehe lib/escape.js.
   const description = [
     `Leistung: ${appointment.service}`,
     `Salon: ${SALON.name}`,
@@ -167,14 +153,14 @@ function buildICSAttachment(appointment) {
     `DTSTAMP:${toICSUtc(now)}`,
     `DTSTART:${toICSUtc(start)}`,
     `DTEND:${toICSUtc(end)}`,
-    `SUMMARY:${escapeICS(`Friseur-Termin: ${appointment.service}`)}`,
-    `LOCATION:${escapeICS(`${SALON.address}, ${SALON.city}`)}`,
+    `SUMMARY:${escapeIcs(`Friseur-Termin: ${appointment.service}`)}`,
+    `LOCATION:${escapeIcs(`${SALON.address}, ${SALON.city}`)}`,
     `DESCRIPTION:${description}`,
     "STATUS:CONFIRMED",
     "BEGIN:VALARM",
     "TRIGGER:-PT2H",
     "ACTION:DISPLAY",
-    `DESCRIPTION:Erinnerung – Friseur-Termin bei ${escapeICS(SALON.name)}`,
+    `DESCRIPTION:Erinnerung – Friseur-Termin bei ${escapeIcs(SALON.name)}`,
     "END:VALARM",
     "END:VEVENT",
     "END:VCALENDAR",
