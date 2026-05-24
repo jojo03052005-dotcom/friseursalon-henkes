@@ -1,0 +1,12 @@
+{
+  "_comment": "Liste der Schliesstage (Feiertage, Betriebsferien, ...). Format YYYY-MM-DD. Diese Daten werden im Buchungsformular abgelehnt mit einer freundlichen Meldung. Bitte vor jedem Jahreswechsel aktualisieren.",
+  "_examples": [
+    "Pflege-Beispiele -- in 'days' eintragen, dann sind sie blockiert:",
+    "2026-12-24 = Heiligabend",
+    "2026-12-25 = 1. Weihnachtstag",
+    "2026-12-26 = 2. Weihnachtstag",
+    "2026-12-31 = Silvester",
+    "2027-01-01 = Neujahr"
+  ],
+  "days": []
+}

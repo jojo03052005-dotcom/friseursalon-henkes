@@ -11,9 +11,25 @@ const metaEl = document.querySelector("[data-admin-meta]");
 const alertEl = document.querySelector("[data-admin-alert]");
 const tbody = document.querySelector("[data-appointments-body]");
 const refreshBtn = document.querySelector("[data-refresh]");
+const filtersEl = document.querySelector("[data-admin-filters]");
 
 const API_BASE = window.HENKES_API_BASE || window.location.origin;
 const COLSPAN = 10;
+
+// Aktueller Filter-Zustand und die letzte vom Backend geladene Liste.
+// `lastAppointments` wird bei jedem loadAppointments() neu gesetzt; die
+// Filter-Klicks rendern darauf, ohne neu zu fetchen.
+let currentFilter = "all";
+let lastAppointments = [];
+
+const matchesFilter = (item) => {
+  const workflow = getWorkflowStatus(item);
+  if (currentFilter === "all") return true;
+  if (currentFilter === "pending") return workflow === "pending";
+  if (currentFilter === "confirmed") return workflow === "confirmed";
+  if (currentFilter === "done") return workflow === "declined" || workflow === "cancelled";
+  return true;
+};
 
 const formatDate = (isoDate) => {
   const date = new Date(`${isoDate}T12:00:00`);
@@ -166,21 +182,56 @@ const renderStatusCell = (item) => {
 };
 
 /**
- * Buttons "Bestaetigen" / "Ablehnen" -- nur bei ausstehenden Anfragen.
+ * Aktions-Buttons je nach Termin-Status:
+ *   - pending   -> Bestaetigen / Ablehnen / Loeschen
+ *   - confirmed -> Absagen (mit Mail) / Loeschen
+ *   - declined  -> Loeschen
+ *   - cancelled -> Loeschen
  */
 const renderActionsCell = (item) => {
   const workflow = getWorkflowStatus(item);
-  if (workflow !== "pending") {
-    return '<span class="admin-actions-empty">—</span>';
+  const id = escapeHtml(item.id);
+
+  const buttons = [];
+  if (workflow === "pending") {
+    buttons.push(
+      `<button type="button" class="admin-action-btn admin-action-confirm" data-action="confirm" data-id="${id}">Bestätigen</button>`,
+      `<button type="button" class="admin-action-btn admin-action-decline" data-action="decline" data-id="${id}">Ablehnen</button>`
+    );
+  } else if (workflow === "confirmed") {
+    buttons.push(
+      `<button type="button" class="admin-action-btn admin-action-cancel" data-action="cancel" data-id="${id}">Absagen</button>`
+    );
   }
-  return `
-    <div class="admin-actions">
-      <button type="button" class="admin-action-btn admin-action-confirm" data-action="confirm" data-id="${escapeHtml(item.id)}">Bestätigen</button>
-      <button type="button" class="admin-action-btn admin-action-decline" data-action="decline" data-id="${escapeHtml(item.id)}">Ablehnen</button>
-    </div>`;
+
+  buttons.push(
+    `<button type="button" class="admin-action-btn admin-action-delete" data-action="delete" data-id="${id}" title="Termin permanent aus der Liste entfernen">Löschen</button>`
+  );
+
+  return `<div class="admin-actions">${buttons.join("")}</div>`;
+};
+
+/**
+ * Konflikt-Badge: zeigt, wenn ein Termin zur gleichen Uhrzeit wie ein
+ * anderer (offener oder bestaetigter) Termin liegt. Die Daten kommen aus
+ * appointment.conflictsWith, gesetzt beim Anlegen vom Server.
+ */
+const renderConflictBadge = (item) => {
+  const conflicts = Array.isArray(item.conflictsWith) ? item.conflictsWith : [];
+  if (conflicts.length === 0) return "";
+  const tooltipParts = conflicts.map(
+    (c) => `${c.name} (${c.service})${c.confirmed ? " ✓bestätigt" : ""}`
+  );
+  return `<span class="status-reminder conflict-badge" title="Konflikt mit: ${escapeHtml(
+    tooltipParts.join(", ")
+  )}">⚠ Slot-Konflikt</span>`;
 };
 
 const renderRows = (appointments) => {
+  lastAppointments = appointments;
+
+  const filtered = appointments.filter(matchesFilter);
+
   if (appointments.length === 0) {
     tbody.innerHTML = `
       <tr>
@@ -190,36 +241,49 @@ const renderRows = (appointments) => {
     return;
   }
 
-  tbody.innerHTML = appointments
-    .map((item) => {
+  if (filtered.length === 0) {
+    tbody.innerHTML = `
+      <tr>
+        <td colspan="${COLSPAN}" class="admin-empty">Keine Termine in dieser Ansicht.</td>
+      </tr>`;
+    // Meta laeuft trotzdem unten ueber alle Termine -- so sieht man auf einen
+    // Blick die Gesamtzahlen.
+  } else {
+    tbody.innerHTML = filtered
+      .map((item) => {
       const workflow = getWorkflowStatus(item);
       const rowClass = workflow === "pending" ? "" : ` class="is-${workflow}"`;
       const notesHtml = item.notes
         ? `<div class="admin-notes">${escapeHtml(item.notes)}</div>`
         : '<div class="admin-notes is-empty">—</div>';
+      const conflictBadge =
+        workflow === "pending" || workflow === "confirmed"
+          ? renderConflictBadge(item)
+          : "";
       return `
         <tr${rowClass}>
-          <td>${formatDate(item.date)}</td>
-          <td>${item.time} Uhr</td>
-          <td><strong>${escapeHtml(item.name)}</strong></td>
-          <td>
+          <td data-label="Datum">${formatDate(item.date)}${conflictBadge ? "<br>" + conflictBadge : ""}</td>
+          <td data-label="Uhrzeit">${item.time} Uhr</td>
+          <td data-label="Name"><strong>${escapeHtml(item.name)}</strong></td>
+          <td data-label="Telefon">
             <a class="admin-phone" href="tel:${escapeHtml(String(item.phone).replace(/\s/g, ""))}">
               ${escapeHtml(item.phone)}
             </a>
           </td>
-          <td>
+          <td data-label="E-Mail">
             <a class="admin-email" href="mailto:${escapeHtml(item.email || "")}">
               ${escapeHtml(item.email || "—")}
             </a>
           </td>
-          <td>${escapeHtml(item.service)}</td>
-          <td>${notesHtml}</td>
-          <td>${formatCreated(item.createdAt)}</td>
-          <td>${renderStatusCell(item)}</td>
-          <td>${renderActionsCell(item)}</td>
+          <td data-label="Leistung">${escapeHtml(item.service)}</td>
+          <td data-label="Notizen">${notesHtml}</td>
+          <td data-label="Eingegangen">${formatCreated(item.createdAt)}</td>
+          <td data-label="Status">${renderStatusCell(item)}</td>
+          <td data-label="Aktionen">${renderActionsCell(item)}</td>
         </tr>`;
-    })
-    .join("");
+      })
+      .join("");
+  }
 
   const counts = appointments.reduce(
     (acc, item) => {
@@ -269,19 +333,45 @@ const loadAppointments = async () => {
   }
 };
 
+// Bestaetigungstexte und HTTP-Mapping pro Aktion -- macht das Anfuegen
+// neuer Aktionen oben einfach.
+const ACTION_CONFIG = {
+  confirm: {
+    confirmText:
+      "Termin jetzt bestätigen? Der Kunde bekommt eine Bestätigungs-Mail und 24 h vorher automatisch eine Erinnerung.",
+    method: "POST",
+    pathSuffix: "/confirm",
+  },
+  decline: {
+    confirmText:
+      "Termin ablehnen? Der Kunde bekommt eine höfliche Absage-Mail mit Bitte, einen anderen Zeitpunkt anzufragen.",
+    method: "POST",
+    pathSuffix: "/decline",
+  },
+  cancel: {
+    confirmText:
+      "Bestätigten Termin wirklich absagen? Der Kunde bekommt eine entschuldigende Absage-Mail, die geplante 24h-Erinnerung wird gestoppt.",
+    method: "POST",
+    pathSuffix: "/cancel",
+  },
+  delete: {
+    confirmText:
+      "Diesen Eintrag permanent aus der Liste entfernen? Der Kunde bekommt KEINE Mail – nutze diese Aktion nur fürs Aufräumen.",
+    method: "DELETE",
+    pathSuffix: "",
+  },
+};
+
 /**
- * Fuehrt eine Admin-Aktion (confirm/decline) aus. Buttons werden waehrend
- * des Requests deaktiviert, danach laedt die Tabelle neu.
+ * Fuehrt eine Admin-Aktion aus. Buttons werden waehrend des Requests
+ * deaktiviert; danach wird die Tabelle neu geladen.
  */
 const performAdminAction = async (id, action, buttons) => {
-  if (!id || !["confirm", "decline"].includes(action)) return;
+  if (!id) return;
+  const config = ACTION_CONFIG[action];
+  if (!config) return;
 
-  const confirmText =
-    action === "confirm"
-      ? "Termin jetzt bestätigen? Der Kunde bekommt eine Bestätigungs-Mail und 24 h vorher automatisch eine Erinnerung."
-      : "Termin ablehnen? Der Kunde bekommt eine höfliche Absage-Mail mit Bitte, einen anderen Zeitpunkt anzufragen.";
-
-  if (!window.confirm(confirmText)) return;
+  if (!window.confirm(config.confirmText)) return;
 
   buttons.forEach((btn) => {
     btn.disabled = true;
@@ -291,8 +381,8 @@ const performAdminAction = async (id, action, buttons) => {
 
   try {
     const response = await fetch(
-      `${API_BASE}/api/admin/appointments/${encodeURIComponent(id)}/${action}`,
-      { method: "POST" }
+      `${API_BASE}/api/admin/appointments/${encodeURIComponent(id)}${config.pathSuffix}`,
+      { method: config.method }
     );
     const result = await readJsonResponse(response);
 
@@ -318,6 +408,24 @@ tbody.addEventListener("click", (event) => {
   const action = btn.dataset.action;
   const buttons = btn.closest(".admin-actions")?.querySelectorAll("button") || [btn];
   performAdminAction(id, action, Array.from(buttons));
+});
+
+// Filter-Buttons: setzen den Status und rendern aus dem Cache (kein neuer
+// Backend-Roundtrip noetig).
+filtersEl?.addEventListener("click", (event) => {
+  const btn = event.target.closest("[data-filter]");
+  if (!btn) return;
+  const filter = btn.dataset.filter;
+  if (!filter || filter === currentFilter) return;
+
+  currentFilter = filter;
+  filtersEl.querySelectorAll("[data-filter]").forEach((b) => {
+    const isActive = b.dataset.filter === filter;
+    b.classList.toggle("is-active", isActive);
+    b.setAttribute("aria-selected", String(isActive));
+  });
+
+  renderRows(lastAppointments);
 });
 
 refreshBtn.addEventListener("click", loadAppointments);

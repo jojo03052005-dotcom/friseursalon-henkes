@@ -119,6 +119,89 @@ function germanLocalToISOString(dateStr, timeStr) {
 }
 
 /**
+ * Default-Dauern pro Leistung, in Minuten. Wird fuer den ICS-Kalender-
+ * Eintrag benoetigt (sonst weiss die Kalender-App nicht, wie lang der
+ * Block belegt sein soll). Werte sind grosszuegig geschaetzt; der Salon
+ * kann das beim Termin anpassen.
+ */
+const SERVICE_DURATIONS_MINUTES = {
+  Haarschnitt: 45,
+  Färbung: 90,
+  Strähnen: 120,
+  Styling: 60,
+  Haarpflege: 45,
+};
+const DEFAULT_DURATION_MINUTES = 60;
+
+/**
+ * Formatiert ein Date als UTC fuer das ICS-Format (YYYYMMDDTHHMMSSZ).
+ */
+function toICSUtc(date) {
+  return date.toISOString().replace(/[-:]/g, "").replace(/\.\d{3}/, "");
+}
+
+/**
+ * Baut eine ICS-Datei (RFC 5545) als Buffer fuer den Mail-Anhang.
+ * Kunde klickt -> Kalender-App oeffnet sich mit dem Termin vorausgefuellt.
+ */
+function buildICSAttachment(appointment) {
+  const startIso = germanLocalToISOString(appointment.date, appointment.time);
+  if (!startIso) return null;
+
+  const start = new Date(startIso);
+  const durationMin =
+    SERVICE_DURATIONS_MINUTES[appointment.service] || DEFAULT_DURATION_MINUTES;
+  const end = new Date(start.getTime() + durationMin * 60 * 1000);
+  const now = new Date();
+
+  // Description: ICS verlangt CRLF und escapete Sonderzeichen
+  // (Komma, Backslash, Semikolon, Newline).
+  const escapeICS = (s) =>
+    String(s ?? "")
+      .replace(/\\/g, "\\\\")
+      .replace(/;/g, "\\;")
+      .replace(/,/g, "\\,")
+      .replace(/\n/g, "\\n");
+
+  const description = [
+    `Leistung: ${appointment.service}`,
+    `Salon: ${SALON.name}`,
+    `Adresse: ${SALON.address}, ${SALON.city}`,
+    `Telefon: ${SALON.phone}`,
+    appointment.notes ? `Ihre Notiz: ${appointment.notes}` : null,
+  ]
+    .filter(Boolean)
+    .join("\\n");
+
+  const lines = [
+    "BEGIN:VCALENDAR",
+    "VERSION:2.0",
+    "PRODID:-//Friseursalon Henkes//Buchung//DE",
+    "CALSCALE:GREGORIAN",
+    "METHOD:PUBLISH",
+    "BEGIN:VEVENT",
+    `UID:${appointment.id}@friseursalon-henkes`,
+    `DTSTAMP:${toICSUtc(now)}`,
+    `DTSTART:${toICSUtc(start)}`,
+    `DTEND:${toICSUtc(end)}`,
+    `SUMMARY:${escapeICS(`Friseur-Termin: ${appointment.service}`)}`,
+    `LOCATION:${escapeICS(`${SALON.address}, ${SALON.city}`)}`,
+    `DESCRIPTION:${description}`,
+    "STATUS:CONFIRMED",
+    "BEGIN:VALARM",
+    "TRIGGER:-PT2H",
+    "ACTION:DISPLAY",
+    `DESCRIPTION:Erinnerung – Friseur-Termin bei ${escapeICS(SALON.name)}`,
+    "END:VALARM",
+    "END:VEVENT",
+    "END:VCALENDAR",
+  ];
+
+  // ICS verlangt CRLF zwischen den Zeilen
+  return Buffer.from(lines.join("\r\n"), "utf8");
+}
+
+/**
  * Berechnet wann die 24h-Erinnerung gesendet werden soll.
  * Gibt { scheduledFor, skipReason } zurueck.
  */
@@ -518,6 +601,190 @@ function buildDeclineEmail(appointment, baseUrl) {
 }
 
 /**
+ * Wenn der Salon einen bereits bestaetigten Termin nachtraeglich absagen
+ * muss (z.B. Krankheit, Stylistin ausgefallen). Hoeflich, bittet um neuen Termin.
+ */
+function buildAdminCancellationEmail(appointment, baseUrl) {
+  const dateLabel = formatGermanDate(appointment.date);
+  const subject = `Wichtig: Ihr Termin am ${dateLabel} muss leider entfallen`;
+  const bookingUrl = baseUrl ? `${baseUrl.replace(/\/$/, "")}/#termin` : "";
+
+  const detailRows = [
+    ["Leistung", escapeHtml(appointment.service)],
+    ["Wäre gewesen", `${escapeHtml(dateLabel)}, ${escapeHtml(appointment.time)} Uhr`],
+  ];
+
+  const newRequestCta = bookingUrl
+    ? `
+      <table role="presentation" cellspacing="0" cellpadding="0" style="margin:8px 0 16px;">
+        <tr>
+          <td style="background:#4b3028;border-radius:4px;">
+            <a href="${escapeHtml(bookingUrl)}" style="display:inline-block;padding:12px 22px;color:#fffaf0;text-decoration:none;font-size:14px;font-weight:bold;letter-spacing:0.02em;">Neuen Termin anfragen</a>
+          </td>
+        </tr>
+      </table>
+      <p style="margin:0 0 8px;font-size:13px;line-height:1.6;color:#77675c;">
+        … oder direkt anrufen: <a href="tel:${SALON.phoneTel}" style="color:#9f7630;text-decoration:none;">${SALON.phone}</a>
+      </p>`
+    : `
+      <p style="margin:0 0 12px;font-size:14px;line-height:1.65;color:#77675c;">
+        Bitte rufen Sie uns kurz an, dann finden wir gemeinsam einen neuen Termin:
+        <a href="tel:${SALON.phoneTel}" style="color:#9f7630;text-decoration:none;font-weight:bold;">${SALON.phone}</a>
+      </p>`;
+
+  const bodyContent = `
+    <p style="margin:0 0 16px;font-size:16px;line-height:1.65;color:#4b3028;">
+      Hallo <strong>${escapeHtml(appointment.name)}</strong>,
+    </p>
+    <p style="margin:0 0 20px;font-size:15px;line-height:1.7;color:#4b3028;">
+      es tut uns wirklich leid &mdash; wir müssen Ihren Termin leider absagen. Da ist bei uns kurzfristig etwas dazwischengekommen.
+    </p>
+    <p style="margin:0 0 8px;font-size:12px;letter-spacing:0.1em;text-transform:uppercase;color:#9f7630;font-weight:bold;">Betroffener Termin</p>
+    ${buildDetailsTable(detailRows)}
+    <p style="margin:0 0 12px;font-size:15px;line-height:1.7;color:#4b3028;">
+      Wir würden uns sehr freuen, schnell einen Ersatztermin für Sie zu finden. Am einfachsten ist ein kurzer Anruf, dann besprechen wir's direkt.
+    </p>
+    ${newRequestCta}
+    <p style="margin:24px 0 0;font-size:15px;line-height:1.7;color:#4b3028;">
+      Nochmals Entschuldigung &mdash; bis bald hoffentlich!<br>
+      <strong>Ihr Team vom ${escapeHtml(SALON.name)}</strong>
+    </p>`;
+
+  const textLines = [
+    `Hallo ${appointment.name},`,
+    "",
+    "es tut uns wirklich leid – wir müssen Ihren Termin leider absagen.",
+    "Da ist bei uns kurzfristig etwas dazwischengekommen.",
+    "",
+    "Betroffener Termin:",
+    `  Leistung: ${appointment.service}`,
+    `  Wäre gewesen: ${dateLabel}, ${appointment.time} Uhr`,
+    "",
+    "Wir würden uns sehr freuen, schnell einen Ersatztermin für Sie zu finden.",
+    "Am einfachsten ist ein kurzer Anruf, dann besprechen wir's direkt.",
+    "",
+  ];
+  if (bookingUrl) {
+    textLines.push(`Neuen Termin anfragen: ${bookingUrl}`);
+  }
+  textLines.push(
+    `Oder direkt anrufen: ${SALON.phone}`,
+    "",
+    "Nochmals Entschuldigung – bis bald hoffentlich!",
+    `Ihr Team vom ${SALON.name}`
+  );
+
+  return {
+    subject,
+    html: wrapEmailHtml("Termin muss entfallen", "Wichtige Information", bodyContent),
+    text: textLines.join("\n"),
+  };
+}
+
+/**
+ * Tages-Digest fuer den Salon (morgens als Cron getriggert):
+ * "Heute habt ihr X Termine".
+ */
+function buildDailyDigestEmail(appointments, today) {
+  const dateLabel = formatGermanDate(today);
+  const subject =
+    appointments.length === 0
+      ? `Heute, ${dateLabel}: keine Termine`
+      : `Heute, ${dateLabel}: ${appointments.length} Termin${appointments.length === 1 ? "" : "e"}`;
+
+  let bodyContent;
+  let textLines;
+
+  if (appointments.length === 0) {
+    bodyContent = `
+      <p style="margin:0 0 16px;font-size:16px;line-height:1.65;color:#4b3028;">
+        Guten Morgen,
+      </p>
+      <p style="margin:0 0 20px;font-size:15px;line-height:1.7;color:#4b3028;">
+        heute (${escapeHtml(dateLabel)}) sind <strong>keine Termine</strong> bestätigt. Falls noch Anfragen offen sind, schauen Sie kurz im Admin-Panel.
+      </p>`;
+    textLines = [
+      "Guten Morgen,",
+      "",
+      `heute (${dateLabel}) sind keine Termine bestaetigt.`,
+      "Falls noch Anfragen offen sind, schauen Sie kurz im Admin-Panel.",
+    ];
+  } else {
+    const rows = appointments
+      .sort((a, b) => a.time.localeCompare(b.time))
+      .map((item) => {
+        const phoneClean = String(item.phone || "").replace(/\s/g, "");
+        return `
+          <tr>
+            <td style="padding:10px 0;border-bottom:1px solid rgba(75,48,40,0.12);font-size:15px;font-weight:bold;color:#4b3028;white-space:nowrap;vertical-align:top;">${escapeHtml(item.time)}</td>
+            <td style="padding:10px 10px;border-bottom:1px solid rgba(75,48,40,0.12);font-size:14px;color:#4b3028;vertical-align:top;">
+              <strong>${escapeHtml(item.name)}</strong><br>
+              <span style="color:#77675c;">${escapeHtml(item.service)}</span>
+              ${item.notes ? `<br><em style="color:#77675c;font-size:13px;">${escapeHtml(item.notes)}</em>` : ""}
+            </td>
+            <td style="padding:10px 0;border-bottom:1px solid rgba(75,48,40,0.12);font-size:13px;color:#4b3028;vertical-align:top;text-align:right;white-space:nowrap;">
+              <a href="tel:${escapeHtml(phoneClean)}" style="color:#9f7630;text-decoration:none;">${escapeHtml(item.phone)}</a>
+            </td>
+          </tr>`;
+      })
+      .join("");
+
+    bodyContent = `
+      <p style="margin:0 0 16px;font-size:16px;line-height:1.65;color:#4b3028;">
+        Guten Morgen,
+      </p>
+      <p style="margin:0 0 20px;font-size:15px;line-height:1.7;color:#4b3028;">
+        heute (${escapeHtml(dateLabel)}) habt ihr <strong>${appointments.length} Termin${appointments.length === 1 ? "" : "e"}</strong>:
+      </p>
+      <table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="margin:0 0 24px;">
+        ${rows}
+      </table>
+      <p style="margin:0;font-size:13px;color:#77675c;line-height:1.6;">
+        Schoenen Tag!
+      </p>`;
+
+    textLines = ["Guten Morgen,", "", `heute (${dateLabel}) habt ihr ${appointments.length} Termin${appointments.length === 1 ? "" : "e"}:`, ""];
+    appointments.forEach((item) => {
+      textLines.push(`${item.time} Uhr – ${item.name} (${item.service}) – ${item.phone}`);
+      if (item.notes) textLines.push(`            Notiz: ${item.notes}`);
+    });
+    textLines.push("", "Schoenen Tag!");
+  }
+
+  return {
+    subject,
+    html: wrapEmailHtml("Heute im Salon", "Tagesübersicht", bodyContent),
+    text: textLines.join("\n"),
+  };
+}
+
+async function sendDailyDigestEmail(appointments, today) {
+  const config = getMailConfig();
+  const resend = new Resend(config.apiKey);
+  const mail = buildDailyDigestEmail(appointments, today);
+
+  const result = { sent: false, sentAt: null, error: null };
+
+  try {
+    const { error } = await resend.emails.send({
+      from: config.from,
+      to: config.salonEmail,
+      subject: mail.subject,
+      text: mail.text,
+      html: mail.html,
+    });
+    if (error) throw error;
+    result.sent = true;
+    result.sentAt = new Date().toISOString();
+  } catch (error) {
+    result.error = mapEmailError(error);
+    console.error("[Daily-Digest] Versand fehlgeschlagen:", error?.message || error);
+  }
+
+  return result;
+}
+
+/**
  * Salon-Benachrichtigung bei neuer Anfrage.
  */
 function buildSalonEmail(appointment) {
@@ -709,8 +976,19 @@ async function sendConfirmationEmail(appointment, baseUrl) {
   };
 
   const confirmedMail = buildConfirmedEmail(appointment, effectiveBaseUrl);
+  const icsBuffer = buildICSAttachment(appointment);
+  const attachments = icsBuffer
+    ? [
+        {
+          filename: "termin.ics",
+          content: icsBuffer.toString("base64"),
+          contentType: "text/calendar; charset=utf-8; method=PUBLISH",
+        },
+      ]
+    : undefined;
 
-  // 1. Bestaetigungs-Mail
+  // 1. Bestaetigungs-Mail (mit ICS-Anhang -- ein Klick und der Termin
+  //    steht im Kalender des Kunden, inkl. 2h-Vorab-Erinnerung)
   try {
     const { error } = await resend.emails.send({
       from: config.from,
@@ -719,6 +997,7 @@ async function sendConfirmationEmail(appointment, baseUrl) {
       subject: confirmedMail.subject,
       text: confirmedMail.text,
       html: confirmedMail.html,
+      attachments,
     });
     if (error) throw error;
     status.customer.sent = true;
@@ -793,6 +1072,59 @@ async function sendDeclineEmail(appointment, baseUrl) {
 }
 
 /**
+ * Wenn der Salon einen bestaetigten/ausstehenden Termin nachtraeglich
+ * absagen muss: Kunde benachrichtigen + geplante 24h-Erinnerung
+ * canceln (falls vorhanden).
+ */
+async function sendAdminCancellationEmail(appointment, baseUrl) {
+  const config = getMailConfig();
+  const resend = new Resend(config.apiKey);
+  const effectiveBaseUrl = config.publicBaseUrl || baseUrl || "";
+
+  const result = {
+    customer: { sent: false, sentAt: null, error: null },
+    reminderCancelled: false,
+    reminderCancelError: null,
+  };
+
+  // 1. Geplante Erinnerung abbrechen (falls vorhanden)
+  const reminderEmailId =
+    appointment.confirmationStatus?.reminder?.emailId ||
+    appointment.emailStatus?.reminder?.emailId;
+  if (reminderEmailId) {
+    try {
+      const { error } = await resend.emails.cancel(reminderEmailId);
+      if (error) throw error;
+      result.reminderCancelled = true;
+    } catch (error) {
+      result.reminderCancelError = mapEmailError(error);
+      console.error("[Admin-Storno] Erinnerung-Abbruch:", error?.message || error);
+    }
+  }
+
+  // 2. Kunden informieren
+  const mail = buildAdminCancellationEmail(appointment, effectiveBaseUrl);
+  try {
+    const { error } = await resend.emails.send({
+      from: config.from,
+      to: appointment.email,
+      replyTo: config.replyTo,
+      subject: mail.subject,
+      text: mail.text,
+      html: mail.html,
+    });
+    if (error) throw error;
+    result.customer.sent = true;
+    result.customer.sentAt = new Date().toISOString();
+  } catch (error) {
+    result.customer.error = mapEmailError(error);
+    console.error("[Admin-Storno] Kunde:", error?.message || error);
+  }
+
+  return result;
+}
+
+/**
  * Wenn Kunde storniert: Salon informieren + geplante Erinnerung abbrechen.
  */
 async function sendCancellationEmail(appointment) {
@@ -805,8 +1137,13 @@ async function sendCancellationEmail(appointment) {
     reminderCancelError: null,
   };
 
-  // 1. Geplante Erinnerung abbrechen (falls vorhanden)
-  const reminderEmailId = appointment.emailStatus?.reminder?.emailId;
+  // 1. Geplante Erinnerung abbrechen (falls vorhanden).
+  // Seit der Workflow-Umstellung wird die Erinnerung erst beim Bestaetigen
+  // geplant und liegt in confirmationStatus. Alte Datensaetze (vor dem
+  // Umbau) koennten sie noch unter emailStatus haben -- daher Fallback.
+  const reminderEmailId =
+    appointment.confirmationStatus?.reminder?.emailId ||
+    appointment.emailStatus?.reminder?.emailId;
   if (reminderEmailId) {
     try {
       const { error } = await resend.emails.cancel(reminderEmailId);
@@ -881,8 +1218,10 @@ function isEmailConfigured() {
 module.exports = {
   sendAppointmentEmails,
   sendCancellationEmail,
+  sendAdminCancellationEmail,
   sendConfirmationEmail,
   sendDeclineEmail,
+  sendDailyDigestEmail,
   isEmailConfigured,
   getMailConfig,
   SALON,

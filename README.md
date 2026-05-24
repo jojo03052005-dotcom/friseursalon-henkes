@@ -1,95 +1,141 @@
-# Friseursalon Henkes – Website & Terminbuchung
+# Friseursalon Henkes - Website & Terminbuchung
 
-Statische Website mit Express-Backend, JSON-Speicher und E-Mail-Benachrichtigung per Nodemailer.
+Statische Website mit Express-Backend, JSON-Speicher und transaktionalen
+E-Mails via [Resend](https://resend.com).
 
-## Server starten
+- **Frontend:** Statische HTML/CSS/JS-Seite, deployed auf Netlify
+- **Backend:** Node/Express auf Render (Free Tier), API + Admin + Storno-Flow
+- **Mail:** Resend HTTP-API (sofort + 24h-Erinnerung + Storno-Benachrichtigung)
+- **Speicher:** `data/appointments.json` (achtung: Render-Disk noetig fuer Persistenz)
+
+## Schnellstart lokal
 
 ```bash
 npm install
+cp .env.example .env     # Werte eintragen, siehe unten
 npm start
 ```
 
-Falls `npm` nicht im PATH liegt (Windows):
-
-```bash
-"C:\Program Files\nodejs\npm.cmd" install
-"C:\Program Files\nodejs\npm.cmd" start
-```
-
-Alternativ: **`start.bat`** doppelklicken.
+Server laeuft dann auf <http://localhost:3000>.
 
 | Seite | URL |
-|--------|-----|
-| Website | http://localhost:3000/ |
-| Terminbuchung | http://localhost:3000/#termin |
-| Admin | http://localhost:3000/admin.html |
+|-------|-----|
+| Website | <http://localhost:3000/> |
+| Buchung | <http://localhost:3000/#termin> |
+| Admin | <http://localhost:3000/admin.html> |
 
-> Die Seite muss über den Server geöffnet werden – nicht per Doppelklick auf `index.html`.
+> Die Seite muss ueber den Server geoeffnet werden, nicht per Doppelklick
+> auf `index.html` (sonst funktionieren die API-Calls nicht).
 
----
+## Environment-Variablen
 
-## E-Mail einrichten (Gmail SMTP)
+Siehe `.env.example` fuer den vollstaendigen Stand und Kommentare.
 
-### 1. `.env` anlegen
+### Pflicht
 
-Kopieren Sie `.env.example` nach `.env` und tragen Sie ein:
+| Variable | Zweck |
+|----------|-------|
+| `RESEND_API_KEY` | API-Key aus <https://resend.com> (Format `re_...`) |
+| `SALON_EMAIL` | Empfaenger fuer Salon-Benachrichtigungen |
+| `ADMIN_USER` | Benutzername fuer das Admin-Panel (HTTP Basic Auth) |
+| `ADMIN_PASSWORD` | Passwort fuer das Admin-Panel |
 
-```env
-EMAIL_USER=ihre-adresse@gmail.com
-EMAIL_PASS=ihr-16-stelliges-app-passwort
-SALON_EMAIL=empfang@ihr-salon.de
-```
+### Optional
 
-| Variable | Bedeutung |
-|----------|-----------|
-| `EMAIL_USER` | Gmail-Adresse, die E-Mails versendet |
-| `EMAIL_PASS` | **App-Passwort** (nicht Ihr normales Gmail-Passwort) |
-| `SALON_EMAIL` | Empfänger für Salon-Benachrichtigungen |
-
-### 2. Gmail App-Passwort erstellen
-
-1. Google-Konto → **Sicherheit**
-2. **Zwei-Faktor-Authentifizierung** aktivieren
-3. **App-Passwörter** → App „Mail“, Gerät „Windows“
-4. Das 16-stellige Passwort in `EMAIL_PASS` eintragen (ohne Leerzeichen)
-
-### 3. Server neu starten
-
-Nach Änderungen an `.env` den Server stoppen (`Strg+C`) und erneut `npm start` ausführen.
-
----
-
-## Outlook / Microsoft 365
-
-```env
-EMAIL_USER=ihre-adresse@outlook.de
-EMAIL_PASS=ihr-passwort-oder-app-passwort
-SALON_EMAIL=empfang@ihr-salon.de
-SMTP_HOST=smtp.office365.com
-SMTP_PORT=587
-```
-
-Bei Microsoft-Konten ggf. ebenfalls ein App-Passwort verwenden, wenn die normale Anmeldung blockiert wird.
-
----
+| Variable | Zweck |
+|----------|-------|
+| `EMAIL_FROM` | Absender, z.B. `Friseursalon Henkes <noreply@friseursalon-henkes.de>`. Default: `onboarding@resend.dev` (Sandbox, landet im Spam-Filter). |
+| `EMAIL_USER` | Reply-To fuer Kunden-Mails. Default: `SALON_EMAIL`. |
+| `PUBLIC_BASE_URL` | Basis-URL fuer Stornier-Links in den Mails (z.B. `https://friseursalon-henkes-backend.onrender.com`). Default: aus Request abgeleitet. |
+| `ALLOWED_ORIGINS` | Zusaetzliche erlaubte CORS-Origins, Komma-getrennt. |
+| `PORT` | Server-Port (default 3000). |
 
 ## Was passiert bei einer Buchung?
 
-1. Termin wird in `data/appointments.json` gespeichert
-2. **Bestätigungs-E-Mail** an die Kunden-E-Mail (HTML, Salon-Design)
-3. **Benachrichtigung** an `SALON_EMAIL`
-4. Erfolgsmeldung im Formular nur, wenn beide E-Mails versendet wurden
+1. Formular auf `/#termin` wird abgeschickt
+2. Backend validiert, speichert in `data/appointments.json`
+3. **Sofort-Mails:**
+   - "Anfrage erhalten" an den Kunden (mit Stornier-Link)
+   - "Neue Terminanfrage" an `SALON_EMAIL`
+4. Termin landet im Admin-Panel als **Ausstehend**
+5. Salon bestaetigt im Admin -> **Bestaetigungs-Mail** an Kunden + Resend
+   plant automatisch eine 24h-Erinnerung
+6. Salon lehnt im Admin ab -> **Absage-Mail** an Kunden mit Bitte um neuen Termin
+7. Kunde klickt Stornier-Link -> Termin als storniert markiert, geplante
+   Erinnerung wird gecancelt, Salon bekommt Info-Mail
 
-Im **Admin** sehen Sie Kunden-E-Mail und Versandstatus (gesendet / teilweise / fehlgeschlagen).
+## Architektur
 
----
+```
+[Browser]
+    |
+    | https
+    v
+[Netlify (statisch)]                   <- index.html, styles.css, script.js
+    |
+    | XHR/fetch (window.HENKES_API_BASE)
+    v
+[Render (Node + Express)]              <- server.js, services/emailService.js
+    |        |
+    |        +---> Resend HTTP-API     <- Mails (sofort + scheduled)
+    v
+[data/appointments.json]               <- JSON-Speicher, achtung ephemer
+                                          ohne Render Disk!
+```
+
+## Deployment
+
+### Frontend (Netlify)
+
+Repo verbinden, Build-Command leer, Publish-Directory `/`. In `index.html`
+ist `window.HENKES_API_BASE` auf die Render-URL hardcoded -- bei Wechsel
+der Backend-URL dort anpassen.
+
+### Backend (Render)
+
+Repo verbinden, `render.yaml` wird automatisch erkannt. Im Render-Dashboard
+unter **Environment** die Variablen aus `.env.example` setzen (alle mit
+`sync: false` markierten muessen manuell rein).
+
+Achtung: **Render Free Tier hat ephemeren Storage**. Wenn die Buchungen
+einen Deploy ueberleben sollen, brauchst du einen Render Disk (kostet
+ca. 1$/Monat) oder eine externe DB.
+
+Ausserdem schlaeft Render Free nach ~15 Min ohne Traffic -- der naechste
+Request weckt ihn auf (Cold Start, ~30-60 Sek). Fuer echten Betrieb
+entweder Cron-Pinger (z.B. cron-job.org auf `/api/health` alle 10 Min) oder
+Render Starter-Plan ($7/Monat).
+
+## Admin-Panel
+
+Erreichbar unter `/admin.html`. Geschuetzt per HTTP Basic Auth -- der
+Browser merkt sich die Credentials fuer die Session.
+
+Zeigt alle Terminanfragen mit Status:
+
+- **Ausstehend** - Anfrage eingegangen, wartet auf Salon-Entscheidung
+- **Bestaetigt** - Salon hat zugesagt, Bestaetigungs-Mail + 24h-Reminder sind raus
+- **Abgelehnt** - Salon hat abgesagt, Absage-Mail ging an Kunden
+- **Storniert** - Kunde hat den Stornier-Link benutzt
 
 ## Projektstruktur
 
 ```
-server.js              # Express-API
-services/emailService.js
-data/appointments.json
-.env                   # Zugangsdaten (nicht committen)
-index.html / admin.html
+server.js                # Express-API (Routes, Validation, Admin-Auth, Storno-HTML)
+services/emailService.js # Resend-Integration + Mail-Templates
+data/appointments.json   # JSON-Speicher (ephemer ohne Render Disk!)
+index.html               # Startseite + Buchungsformular
+script.js                # Frontend-Logik (Form-Submit, Reveal-Animationen)
+styles.css               # Salon-Design
+admin.html / .js / .css  # Admin-Panel
+render.yaml              # Render-Deploy-Config
+.env / .env.example      # Lokale Konfiguration (.env ist gitignored)
 ```
+
+## Bekannte Einschraenkungen / TODOs
+
+- [ ] **Persistenz**: JSON liegt auf Render-Filesystem -> Render Disk anbinden oder DB
+- [ ] **Eigene Domain bei Resend verifizieren** (sonst landen Mails im Spam)
+- [ ] **Impressum + Datenschutzerklaerung** (TMG/DSGVO-Pflicht in DE)
+- [ ] **Slot-Konflikt-Pruefung** (zwei Kunden koennen denselben Slot anfragen)
+- [ ] **Bessere Mobile-UX im Admin** (Tabelle scrollt horizontal)

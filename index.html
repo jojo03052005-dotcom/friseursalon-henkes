@@ -3,14 +3,97 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <meta name="description" content="Friseursalon Henkes in Gelsenkirchen: Haarschnitt, Farbe, Strähnen, Styling und Haarpflege in familiärer Atmosphäre.">
-  <title>Friseursalon Henkes | Gelsenkirchen</title>
+  <meta name="theme-color" content="#4b3028">
+  <meta name="description" content="Friseursalon Henkes in Gelsenkirchen-Buer: Haarschnitt, Färbung, Strähnen, Styling und Haarpflege. Seit Jahrzehnten Ihr Vertrauensfriseur in der Fürstinnenstraße.">
+  <meta name="keywords" content="Friseur Gelsenkirchen, Friseursalon Buer, Haarschnitt Gelsenkirchen, Färben Gelsenkirchen, Strähnen Gelsenkirchen, Haarpflege, Friseursalon Henkes">
+  <link rel="canonical" href="https://friseursalon-henkes-website.netlify.app/">
+  <link rel="icon" type="image/svg+xml" href="/favicon.svg">
+  <title>Friseursalon Henkes | Friseur in Gelsenkirchen-Buer</title>
+
+  <!-- Open Graph (Facebook / WhatsApp / iMessage Vorschau) -->
+  <meta property="og:type" content="website">
+  <meta property="og:locale" content="de_DE">
+  <meta property="og:site_name" content="Friseursalon Henkes">
+  <meta property="og:title" content="Friseursalon Henkes | Friseur in Gelsenkirchen-Buer">
+  <meta property="og:description" content="Familiärer Friseursalon in Gelsenkirchen: Haarschnitt, Färbung, Strähnen, Styling. 4,8 ★ bei 71 Google-Bewertungen. Termin online anfragen.">
+  <meta property="og:url" content="https://friseursalon-henkes-website.netlify.app/">
+  <meta property="og:image" content="https://friseursalon-henkes-website.netlify.app/og-image.jpg">
+  <meta property="og:image:alt" content="Friseursalon Henkes – Innenansicht des Salons in Gelsenkirchen">
+
+  <!-- Twitter / X Card -->
+  <meta name="twitter:card" content="summary_large_image">
+  <meta name="twitter:title" content="Friseursalon Henkes | Gelsenkirchen-Buer">
+  <meta name="twitter:description" content="Familiärer Friseursalon in Gelsenkirchen: 4,8 ★ bei 71 Bewertungen. Termin online anfragen.">
+  <meta name="twitter:image" content="https://friseursalon-henkes-website.netlify.app/og-image.jpg">
+
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=Playfair+Display:wght@600;700&display=swap" rel="stylesheet">
   <link rel="stylesheet" href="styles.css">
+
+  <!--
+    Schema.org strukturierte Daten fuer Google Local Pack.
+    LocalBusiness > HairSalon ist DAS Pflicht-Markup fuer einen Friseur, der
+    in Google Maps und im "Friseur in der Naehe"-Ranking auftauchen will.
+    Werte hier bewusst aus den sichtbaren Inhalten gespiegelt, damit nichts
+    auseinanderlaeuft.
+  -->
+  <script type="application/ld+json">
+  {
+    "@context": "https://schema.org",
+    "@type": "HairSalon",
+    "name": "Friseursalon Henkes",
+    "image": "https://friseursalon-henkes-website.netlify.app/og-image.jpg",
+    "url": "https://friseursalon-henkes-website.netlify.app/",
+    "telephone": "+49-209-41793",
+    "priceRange": "€€",
+    "address": {
+      "@type": "PostalAddress",
+      "streetAddress": "Fürstinnenstraße 40",
+      "addressLocality": "Gelsenkirchen",
+      "postalCode": "45883",
+      "addressCountry": "DE"
+    },
+    "aggregateRating": {
+      "@type": "AggregateRating",
+      "ratingValue": "4.8",
+      "reviewCount": "71",
+      "bestRating": "5",
+      "worstRating": "1"
+    },
+    "openingHoursSpecification": [
+      {
+        "@type": "OpeningHoursSpecification",
+        "dayOfWeek": ["Tuesday", "Wednesday", "Thursday", "Friday"],
+        "opens": "09:00",
+        "closes": "18:00"
+      },
+      {
+        "@type": "OpeningHoursSpecification",
+        "dayOfWeek": "Saturday",
+        "opens": "08:00",
+        "closes": "14:00"
+      }
+    ],
+    "sameAs": [
+      "https://maps.app.goo.gl/zW7JCsDZkduqHnX57"
+    ],
+    "hasOfferCatalog": {
+      "@type": "OfferCatalog",
+      "name": "Friseur-Leistungen",
+      "itemListElement": [
+        { "@type": "Offer", "itemOffered": { "@type": "Service", "name": "Haarschnitt" } },
+        { "@type": "Offer", "itemOffered": { "@type": "Service", "name": "Färbung" } },
+        { "@type": "Offer", "itemOffered": { "@type": "Service", "name": "Strähnen" } },
+        { "@type": "Offer", "itemOffered": { "@type": "Service", "name": "Styling" } },
+        { "@type": "Offer", "itemOffered": { "@type": "Service", "name": "Haarpflege" } }
+      ]
+    }
+  }
+  </script>
 </head>
 <body>
+  <a class="skip-link" href="#start">Direkt zum Inhalt</a>
   <header class="site-header" data-header>
     <a class="brand" href="#start" aria-label="Friseursalon Henkes Startseite">
       <span class="brand-mark">H</span>
@@ -91,7 +174,7 @@
         <p>Der Salon ist von Frauen geführt, LGBTQ+-freundlich und arbeitet mit hochwertigen Produkten für Schnitt, Farbe, Pflege und Styling.</p>
       </div>
       <div class="about-panel reveal">
-        <img src="https://images.unsplash.com/photo-1522337660859-02fbefca4702?auto=format&fit=crop&w=900&q=85" alt="Professionelle Friseurin beim Stylen im Salon">
+        <img src="https://images.unsplash.com/photo-1522337660859-02fbefca4702?auto=format&fit=crop&w=900&q=85" alt="Professionelle Friseurin beim Stylen im Salon" loading="lazy" decoding="async" width="900" height="600">
         <div class="badge-card">
           <strong>Bester Friseur in Gelsenkirchen</strong>
           <span>Kundenstimme von Arno Nüm</span>
@@ -291,32 +374,41 @@
       <div class="booking-panel reveal">
         <p class="section-kicker">Terminbuchung</p>
         <h2>Wunschtermin anfragen</h2>
-        <form class="booking-form" data-booking-form novalidate>
+        <form class="booking-form" data-booking-form novalidate aria-describedby="booking-form-status">
+          <!--
+            Honeypot gegen Bots: dieses Feld ist fuer Menschen unsichtbar
+            (display:none + aria-hidden + tabindex=-1 + autocomplete=off).
+            Bots, die einfach alle Felder ausfuellen, taggen sich damit
+            selbst. Der Server ignoriert solche Submissions still.
+            Name absichtlich "website" gewaehlt, weil Spam-Bots danach
+            besonders gerne greifen.
+          -->
+          <input type="text" name="website" class="hp-field" tabindex="-1" autocomplete="off" aria-hidden="true">
           <label>
             Name
-            <input type="text" name="name" placeholder="Ihr Name" autocomplete="name" required>
+            <input type="text" name="name" placeholder="Ihr Name" autocomplete="name" required aria-required="true">
           </label>
           <label>
             Telefon
-            <input type="tel" name="phone" placeholder="Ihre Telefonnummer" autocomplete="tel" required>
+            <input type="tel" name="phone" placeholder="Ihre Telefonnummer" autocomplete="tel" inputmode="tel" pattern="[0-9\s+\-/()]{6,}" title="Bitte nur Ziffern und Trennzeichen (Leerzeichen, +, -, /, Klammern)" required aria-required="true">
           </label>
           <label>
             E-Mail
-            <input type="email" name="email" placeholder="ihre@email.de" autocomplete="email" required>
+            <input type="email" name="email" placeholder="ihre@email.de" autocomplete="email" required aria-required="true">
           </label>
           <div class="booking-form-row">
             <label>
               Wunschdatum
-              <input type="date" name="date" required>
+              <input type="date" name="date" required aria-required="true">
             </label>
             <label>
               Uhrzeit
-              <input type="time" name="time" min="08:00" max="18:00" required>
+              <input type="time" name="time" min="08:00" max="18:00" step="900" required aria-required="true">
             </label>
           </div>
           <label>
             Leistung
-            <select name="service" required>
+            <select name="service" required aria-required="true">
               <option value="">Bitte auswählen</option>
               <option value="Haarschnitt">Haarschnitt</option>
               <option value="Färbung">Färbung</option>
@@ -330,7 +422,12 @@
             <textarea name="notes" rows="3" maxlength="500" placeholder="z.B. Wunschlänge, Wunschfarbe, besondere Wünsche – alles was wir vorher wissen sollten."></textarea>
           </label>
           <button class="button primary" type="submit" data-submit-btn>Anfrage senden</button>
-          <p class="form-message" role="status" aria-live="polite" data-form-message></p>
+          <p class="form-consent">
+            Mit dem Absenden willigen Sie ein, dass wir Ihre Angaben zur Bearbeitung
+            der Terminanfrage verarbeiten dürfen. Details in unserer
+            <a href="/datenschutz.html">Datenschutzerklärung</a>.
+          </p>
+          <p class="form-message" id="booking-form-status" role="status" aria-live="polite" data-form-message></p>
         </form>
       </div>
 
@@ -364,6 +461,8 @@
     <div>
       <a href="tel:020941793">0209 41793</a>
       <a href="https://maps.app.goo.gl/zW7JCsDZkduqHnX57" target="_blank" rel="noopener">Google Maps</a>
+      <a href="/impressum.html">Impressum</a>
+      <a href="/datenschutz.html">Datenschutz</a>
     </div>
   </footer>
 

@@ -8,6 +8,32 @@ const submitBtn = document.querySelector("[data-submit-btn]");
 
 const API_BASE = window.HENKES_API_BASE || window.location.origin;
 
+/**
+ * Render-Free-Tier schlaeft nach 15 Min ohne Traffic. Beim ersten Klick auf
+ * "Anfrage senden" wuerde der Kunde sonst 30-60 Sek warten.
+ *
+ * Trick: sobald der Kunde die Seite oeffnet, schicken wir im Hintergrund
+ * (best-effort, keine Fehler-Anzeige) einen Ping auf /api/health -- das
+ * weckt den Server. Bis der Kunde das Formular ausgefuellt hat, ist der
+ * Server warm und der Submit ist sofort durch. Reine UX-Verbesserung,
+ * kostet nichts wenn der Server eh schon laeuft.
+ *
+ * Wir warten 800ms bis der erste Render gerendert ist, um nicht mit
+ * Font-/Image-Loads zu konkurrieren.
+ */
+window.setTimeout(() => {
+  fetch(`${API_BASE}/api/health`, {
+    method: "GET",
+    cache: "no-store",
+    // keepalive: damit der Request ueberlebt, falls der User direkt zur
+    // naechsten Seite scrollt/wechselt
+    keepalive: true,
+  }).catch(() => {
+    // Bewusst still -- wenn das Wake-up fehlschlaegt, ist das egal.
+    // Der spaetere Submit triggert das normale Cold-Start-UX.
+  });
+}, 800);
+
 const updateHeader = () => {
   header.classList.toggle("is-scrolled", window.scrollY > 24);
 };
@@ -58,6 +84,54 @@ const setMinBookingDate = () => {
 setMinBookingDate();
 
 /**
+ * Holt die aktuelle Service-Liste vom Backend und ersetzt die Optionen im
+ * <select>, falls sie sich geaendert haben. Schlaegt der Fetch fehl (z.B.
+ * Render-Cold-Start), bleibt die statische Default-Liste aus dem HTML
+ * stehen -- der Kunde kann ganz normal buchen.
+ */
+const syncServiceOptions = async () => {
+  const select = bookingForm?.querySelector('select[name="service"]');
+  if (!select) return;
+
+  try {
+    const response = await fetch(`${API_BASE}/api/services`, {
+      headers: { Accept: "application/json" },
+    });
+    if (!response.ok) return;
+    const data = await response.json();
+    if (!data?.success || !Array.isArray(data.services)) return;
+
+    const current = Array.from(select.options)
+      .filter((opt) => opt.value)
+      .map((opt) => opt.value);
+
+    if (
+      current.length === data.services.length &&
+      current.every((value, index) => value === data.services[index])
+    ) {
+      return;
+    }
+
+    const previous = select.value;
+    const escapeAttr = (s) => String(s).replace(/&/g, "&amp;").replace(/"/g, "&quot;");
+    const escapeText = (s) =>
+      String(s).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+    select.innerHTML =
+      '<option value="">Bitte auswählen</option>' +
+      data.services
+        .map((s) => `<option value="${escapeAttr(s)}">${escapeText(s)}</option>`)
+        .join("");
+    if (previous && data.services.includes(previous)) {
+      select.value = previous;
+    }
+  } catch (_err) {
+    // Bewusst still: Default-Optionen aus dem HTML bleiben funktionsfaehig.
+  }
+};
+
+syncServiceOptions();
+
+/**
  * Zeigt Feedback unter dem Formular (Erfolg, Fehler, Laden).
  */
 const showFormFeedback = (type, text) => {
@@ -83,9 +157,17 @@ const readJsonResponse = async (response) => {
 
 /**
  * Sendet Terminanfrage an das Express-Backend.
+ *
+ * Guard `isSubmitting` verhindert zusaetzlich zum disabled-Button, dass
+ * der Handler waehrend eines laufenden Requests erneut feuert (z.B. wenn
+ * der Kunde Enter doppelt drueckt, bevor das Disable wirkt).
  */
+let isSubmitting = false;
+
 bookingForm.addEventListener("submit", async (event) => {
   event.preventDefault();
+  if (isSubmitting) return;
+  isSubmitting = true;
 
   const formData = new FormData(bookingForm);
   const payload = {
@@ -102,12 +184,32 @@ bookingForm.addEventListener("submit", async (event) => {
   bookingForm.classList.add("is-submitting");
   submitBtn.disabled = true;
 
+  // Render-Free-Tier schlaeft nach 15 Min ohne Traffic. Beim ersten Klick
+  // dauert das Aufwecken 30-60 Sekunden, in denen das Formular einfach
+  // "lädt" -- Kunde denkt's haengt. Nach 5s zeigen wir einen Hinweis, nach
+  // 15s einen noch ausfuehrlicheren, damit klar ist: nicht kaputt, nur lahm.
+  const slowHintTimer = setTimeout(() => {
+    showFormFeedback(
+      "loading",
+      "Ihre Anfrage wird gesendet … (der Server wacht gerade auf, das dauert kurz)"
+    );
+  }, 5000);
+  const verySlowHintTimer = setTimeout(() => {
+    showFormFeedback(
+      "loading",
+      "Server startet noch … bitte gleich nicht doppelt klicken, das kann bis zu einer Minute dauern."
+    );
+  }, 15000);
+
   try {
     const response = await fetch(`${API_BASE}/api/appointments`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(payload),
     });
+
+    clearTimeout(slowHintTimer);
+    clearTimeout(verySlowHintTimer);
 
     const result = await readJsonResponse(response);
 
@@ -131,11 +233,14 @@ bookingForm.addEventListener("submit", async (event) => {
     showFormFeedback(
       "error",
       isNetwork
-        ? "Server nicht erreichbar. Bitte starten Sie den Server mit „npm start“ und laden Sie die Seite neu."
+        ? "Verbindung zum Server fehlgeschlagen. Bitte einen Moment warten und es nochmal versuchen – oder kurz anrufen: 0209 41793."
         : error.message
     );
   } finally {
+    clearTimeout(slowHintTimer);
+    clearTimeout(verySlowHintTimer);
     bookingForm.classList.remove("is-submitting");
     submitBtn.disabled = false;
+    isSubmitting = false;
   }
 });

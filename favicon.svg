@@ -1,0 +1,9 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64">
+  <!-- Salon-Logo als Favicon: Goldener Kreis mit Espresso-"H" in Playfair-Anmutung -->
+  <circle cx="32" cy="32" r="30" fill="#caa45d"/>
+  <circle cx="32" cy="32" r="30" fill="none" stroke="#4b3028" stroke-width="2"/>
+  <text x="32" y="44" text-anchor="middle"
+        font-family="'Playfair Display', Georgia, serif"
+        font-size="38" font-weight="700"
+        fill="#241713">H</text>
+</svg>

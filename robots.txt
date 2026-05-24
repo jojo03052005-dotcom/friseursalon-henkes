@@ -1,0 +1,9 @@
+User-agent: *
+Allow: /
+Disallow: /admin.html
+Disallow: /admin.js
+Disallow: /admin.css
+Disallow: /api/
+Disallow: /storno/
+
+Sitemap: https://friseursalon-henkes-website.netlify.app/sitemap.xml
