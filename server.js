@@ -13,15 +13,7 @@ const { randomUUID } = require("crypto");
 
 const {
   SALON,
-  SALON_HOURS,
   ALLOWED_SERVICES,
-  ALLOWED_MINUTES,
-  MAX_BOOKING_HORIZON_DAYS,
-  MAX_NOTES_LENGTH,
-  EMAIL_REGEX,
-  PHONE_ALLOWED_CHARS,
-  PHONE_MIN_DIGITS,
-  SAME_DAY_LEAD_TIME_MS,
   DEDUPE_WINDOW_MS,
   ROOT_DIR,
   DEFAULT_ALLOWED_ORIGINS,
@@ -46,9 +38,9 @@ const {
   findById: findAppointmentById,
   findByCancelToken,
   remove: removeAppointment,
-  readClosedDays,
 } = require("./lib/storage");
 const { requireAdminAuth, safeStringEqual } = require("./lib/auth");
+const { validateAppointment } = require("./lib/validate");
 
 const log = logger.child("server");
 
@@ -176,136 +168,6 @@ app.get("/api/services", (_req, res) => {
   res.set("Cache-Control", "public, max-age=300"); // 5 Min cache
   res.json({ success: true, services: ALLOWED_SERVICES });
 });
-
-async function validateAppointment(payload) {
-  const errors = [];
-  const name = typeof payload.name === "string" ? payload.name.trim() : "";
-  const phone = typeof payload.phone === "string" ? payload.phone.trim() : "";
-  const email = typeof payload.email === "string" ? payload.email.trim() : "";
-  const date = typeof payload.date === "string" ? payload.date.trim() : "";
-  const time = typeof payload.time === "string" ? payload.time.trim() : "";
-  const service = typeof payload.service === "string" ? payload.service.trim() : "";
-  const rawNotes = typeof payload.notes === "string" ? payload.notes : "";
-  // Whitespace trimmen, mehrfache Zeilenumbrueche normalisieren, Laenge begrenzen.
-  const notes = rawNotes
-    .replace(/\r\n/g, "\n")
-    .replace(/\n{3,}/g, "\n\n")
-    .trim()
-    .slice(0, MAX_NOTES_LENGTH);
-
-  if (!name || name.length < 2) {
-    errors.push("Bitte geben Sie einen gültigen Namen ein.");
-  }
-
-  if (!phone) {
-    errors.push("Bitte geben Sie Ihre Telefonnummer ein.");
-  } else if (!PHONE_ALLOWED_CHARS.test(phone)) {
-    errors.push("Telefonnummer darf nur Ziffern und Trennzeichen enthalten.");
-  } else if (phone.replace(/\D/g, "").length < PHONE_MIN_DIGITS) {
-    errors.push("Bitte geben Sie eine vollständige Telefonnummer ein.");
-  }
-
-  if (!email) {
-    errors.push("Bitte geben Sie Ihre E-Mail-Adresse ein.");
-  } else if (!EMAIL_REGEX.test(email)) {
-    errors.push("Bitte geben Sie eine gültige E-Mail-Adresse ein.");
-  }
-
-  const dateMatch = /^\d{4}-\d{2}-\d{2}$/.test(date);
-  let dateIsValid = false;
-  let parsedDate = null;
-  let weekdayHours = null;
-  if (!dateMatch) {
-    errors.push("Bitte wählen Sie ein gültiges Datum.");
-  } else {
-    parsedDate = new Date(`${date}T12:00:00`);
-    if (Number.isNaN(parsedDate.getTime())) {
-      errors.push("Das gewählte Datum ist ungültig.");
-    } else {
-      const today = new Date();
-      today.setHours(0, 0, 0, 0);
-      const maxDate = new Date(today.getTime() + MAX_BOOKING_HORIZON_DAYS * 24 * 60 * 60 * 1000);
-
-      if (parsedDate < today) {
-        errors.push("Das Datum darf nicht in der Vergangenheit liegen.");
-      } else if (parsedDate > maxDate) {
-        errors.push(
-          `Termine können maximal ${MAX_BOOKING_HORIZON_DAYS} Tage im Voraus gebucht werden. Bei späteren Wünschen bitte kurz anrufen.`
-        );
-      } else {
-        weekdayHours = SALON_HOURS[parsedDate.getDay()];
-        if (!weekdayHours) {
-          errors.push(
-            "An diesem Wochentag ist der Salon geschlossen. Bitte wählen Sie Di–Sa."
-          );
-        } else {
-          // Pruefe Schliesstage (Feiertage, Betriebsferien)
-          const closedDays = await readClosedDays();
-          if (closedDays.has(date)) {
-            errors.push(
-              "An diesem Tag ist der Salon geschlossen (Feiertag oder Betriebsferien). Bitte wählen Sie einen anderen Tag."
-            );
-          } else {
-            dateIsValid = true;
-          }
-        }
-      }
-    }
-  }
-
-  const timeMatch = /^([01]\d|2[0-3]):([0-5]\d)$/.exec(time);
-  if (!timeMatch) {
-    errors.push("Bitte wählen Sie eine gültige Uhrzeit.");
-  } else {
-    const [, hh, mm] = timeMatch;
-    if (!ALLOWED_MINUTES.has(mm)) {
-      errors.push("Bitte wählen Sie eine Uhrzeit im 15-Minuten-Raster (z.B. 10:00, 10:15).");
-    }
-
-    // Pro Wochentag andere Oeffnungszeiten (Samstag schliesst um 14:00).
-    if (dateIsValid && weekdayHours) {
-      const requestedMinutes = Number(hh) * 60 + Number(mm);
-      if (requestedMinutes < weekdayHours.open || requestedMinutes >= weekdayHours.close) {
-        const fmt = (mins) =>
-          `${String(Math.floor(mins / 60)).padStart(2, "0")}:${String(mins % 60).padStart(2, "0")}`;
-        errors.push(
-          `An diesem Tag haben wir von ${fmt(weekdayHours.open)} bis ${fmt(weekdayHours.close)} Uhr geöffnet. Bitte wählen Sie eine Uhrzeit in diesem Fenster.`
-        );
-      }
-    }
-
-    // Wenn der gewuenschte Termin heute ist, darf die Uhrzeit nicht in der
-    // Vergangenheit liegen (mind. 60 Min Vorlauf, damit der Salon reagieren kann).
-    if (dateIsValid && parsedDate) {
-      const today = new Date();
-      today.setHours(0, 0, 0, 0);
-      const requestedDay = new Date(parsedDate);
-      requestedDay.setHours(0, 0, 0, 0);
-      if (requestedDay.getTime() === today.getTime()) {
-        const requestedTime = new Date(`${date}T${hh}:${mm}:00`);
-        const minimumLead = new Date(Date.now() + SAME_DAY_LEAD_TIME_MS);
-        if (requestedTime < minimumLead) {
-          errors.push(
-            "Für heute brauchen wir mindestens 60 Minuten Vorlauf. Bitte wählen Sie eine spätere Uhrzeit oder rufen Sie kurz an."
-          );
-        }
-      }
-    }
-  }
-
-  if (!service || !ALLOWED_SERVICES.includes(service)) {
-    errors.push("Bitte wählen Sie eine Leistung aus.");
-  }
-
-  if (errors.length > 0) {
-    return { ok: false, errors };
-  }
-
-  return {
-    ok: true,
-    data: { name, phone, email, date, time, service, notes },
-  };
-}
 
 function summarizeEmailStatus(emailStatus) {
   if (emailStatus?.configured === false) return "not_configured";
