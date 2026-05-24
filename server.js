@@ -11,6 +11,27 @@ const rateLimit = require("express-rate-limit");
 const fs = require("fs/promises");
 const path = require("path");
 const { randomUUID, timingSafeEqual } = require("crypto");
+
+const {
+  SALON,
+  SALON_HOURS,
+  ALLOWED_SERVICES,
+  ALLOWED_MINUTES,
+  MAX_BOOKING_HORIZON_DAYS,
+  MAX_NOTES_LENGTH,
+  EMAIL_REGEX,
+  PHONE_ALLOWED_CHARS,
+  PHONE_MIN_DIGITS,
+  SAME_DAY_LEAD_TIME_MS,
+  DEDUPE_WINDOW_MS,
+  ROOT_DIR,
+  DATA_DIR,
+  APPOINTMENTS_FILE,
+  CLOSED_DAYS_FILE,
+  DEFAULT_ALLOWED_ORIGINS,
+  NETLIFY_PREVIEW_REGEX,
+} = require("./lib/config");
+
 const {
   sendAppointmentEmails,
   sendCancellationEmail,
@@ -19,54 +40,10 @@ const {
   sendDeclineEmail,
   sendDailyDigestEmail,
   isEmailConfigured,
-  SALON,
 } = require("./services/emailService");
 
 const app = express();
 const PORT = process.env.PORT || 3000;
-const ROOT = __dirname;
-const DATA_DIR = path.join(ROOT, "data");
-const APPOINTMENTS_FILE = path.join(DATA_DIR, "appointments.json");
-const CLOSED_DAYS_FILE = path.join(DATA_DIR, "closed-days.json");
-
-// Wie weit in die Zukunft Buchungen erlaubt sind. 90 Tage decken
-// realistische Vorausplanung ab, blockieren aber "Buche mich am
-// 31.12.2030"-Spass.
-const MAX_BOOKING_HORIZON_DAYS = 90;
-
-// Salon-Oeffnungszeiten pro Wochentag (0=So .. 6=Sa). Wenn der Wochentag
-// nicht im Objekt steht -> Salon zu. Wenn ja, muss die gewuenschte
-// Uhrzeit im [openMinutes, closeMinutes)-Fenster liegen. Werte sind
-// Minuten seit Mitternacht.
-const SALON_HOURS = {
-  // Mo (1) = zu -- klassischer Friseur-Ruhetag
-  2: { open: 9 * 60, close: 18 * 60 }, // Di
-  3: { open: 9 * 60, close: 18 * 60 }, // Mi
-  4: { open: 9 * 60, close: 18 * 60 }, // Do
-  5: { open: 9 * 60, close: 18 * 60 }, // Fr
-  6: { open: 8 * 60, close: 14 * 60 }, // Sa
-  // So (0) = zu (gesetzlich, plus Tradition)
-};
-// Name der Netlify-Site (Produktions-Slug). Wenn die Site umbenannt wird,
-// hier aendern -- dann passen Produktion UND alle Deploy-Previews automatisch.
-const NETLIFY_SITE = "friseursalon-henkes-website";
-
-const DEFAULT_ALLOWED_ORIGINS = [
-  "http://localhost:3000",
-  "http://127.0.0.1:3000",
-  `https://${NETLIFY_SITE}.netlify.app`,
-];
-
-// Pattern fuer Netlify-Deploy-Previews und Branch-Deploys, z.B.
-//   https://deploy-preview-8--friseursalon-henkes-website.netlify.app
-//   https://branchname--friseursalon-henkes-website.netlify.app
-// Damit kann jeder PR vor Merge auf einer Live-URL gegen das echte Backend
-// getestet werden. Der $-Anchor verhindert Spoofing wie
-// "...netlify.app.attacker.com". Site-Name hat keine Regex-Sonderzeichen
-// (nur a-z, Bindestrich), darum keine Escape-Logik noetig.
-const NETLIFY_PREVIEW_REGEX = new RegExp(
-  `^https://[a-z0-9-]+--${NETLIFY_SITE}\\.netlify\\.app$`
-);
 
 function isAllowedOrigin(origin, exactSet) {
   if (!origin) return false;
@@ -74,30 +51,6 @@ function isAllowedOrigin(origin, exactSet) {
   if (NETLIFY_PREVIEW_REGEX.test(origin)) return true;
   return false;
 }
-
-// Die maßgebliche Liste der Leistungen. Wird via GET /api/services auch ans
-// Frontend ausgeliefert, damit das Auswahlfeld nicht out-of-sync laeuft.
-// Wenn der Salon eine neue Leistung anbietet -> hier ergaenzen, fertig.
-// (Die Preise in index.html#preise sind statisch und muessen separat
-// gepflegt werden, das ist ein anderer Use-Case.)
-const ALLOWED_SERVICES = [
-  "Haarschnitt",
-  "Färbung",
-  "Strähnen",
-  "Styling",
-  "Haarpflege",
-];
-
-const EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/i;
-// Telefonnummern: nur sinnvolle Zeichen erlaubt. Buchstaben verraten Spam-Bots,
-// die wirres Zeug einfuellen. Ziffern muessen mind. 6 sein -- weniger ist
-// realistisch keine echte Nummer.
-const PHONE_ALLOWED_CHARS = /^[\d\s+\-/()]+$/;
-const MAX_NOTES_LENGTH = 500;
-
-// Wir akzeptieren nur Slots im 15-Minuten-Raster (HH:00, HH:15, HH:30, HH:45).
-// Krumme Zeiten wie 14:37 deuten auf Tipper oder Bot.
-const ALLOWED_MINUTES = new Set(["00", "15", "30", "45"]);
 
 /**
  * Liest die Schliesstage-Liste (Feiertage, Betriebsferien) aus
@@ -208,7 +161,7 @@ app.use((req, res, next) => {
   return next();
 });
 
-app.use(express.static(ROOT));
+app.use(express.static(ROOT_DIR));
 
 app.get("/api/health", (_req, res) => {
   res.json({
@@ -275,7 +228,7 @@ async function validateAppointment(payload) {
     errors.push("Bitte geben Sie Ihre Telefonnummer ein.");
   } else if (!PHONE_ALLOWED_CHARS.test(phone)) {
     errors.push("Telefonnummer darf nur Ziffern und Trennzeichen enthalten.");
-  } else if (phone.replace(/\D/g, "").length < 6) {
+  } else if (phone.replace(/\D/g, "").length < PHONE_MIN_DIGITS) {
     errors.push("Bitte geben Sie eine vollständige Telefonnummer ein.");
   }
 
@@ -357,7 +310,7 @@ async function validateAppointment(payload) {
       requestedDay.setHours(0, 0, 0, 0);
       if (requestedDay.getTime() === today.getTime()) {
         const requestedTime = new Date(`${date}T${hh}:${mm}:00`);
-        const minimumLead = new Date(Date.now() + 60 * 60 * 1000);
+        const minimumLead = new Date(Date.now() + SAME_DAY_LEAD_TIME_MS);
         if (requestedTime < minimumLead) {
           errors.push(
             "Für heute brauchen wir mindestens 60 Minuten Vorlauf. Bitte wählen Sie eine spätere Uhrzeit oder rufen Sie kurz an."
@@ -556,9 +509,8 @@ app.post("/api/appointments", bookingLimiter, async (req, res) => {
     // Doppel-Submit-Dedupe: Wenn der Kunde aus Versehen doppelt klickt oder
     // der Browser einen Retry macht, koennen identische Buchungen in
     // Sekundenabstand reinkommen. Wir betrachten gleiche (email, date,
-    // time, service) innerhalb von 60s als Duplikat und liefern den
-    // bestehenden Eintrag zurueck, statt einen neuen anzulegen.
-    const DEDUPE_WINDOW_MS = 60 * 1000;
+    // time, service) innerhalb des Dedupe-Fensters als Duplikat und
+    // liefern den bestehenden Eintrag zurueck, statt einen neuen anzulegen.
     const cutoff = Date.now() - DEDUPE_WINDOW_MS;
     const duplicate = appointments.find(
       (item) =>
@@ -1434,7 +1386,7 @@ app.use((req, res) => {
       message: `Endpoint nicht gefunden: ${req.method} ${req.path}`,
     });
   }
-  res.status(404).sendFile(path.join(ROOT, "404.html"));
+  res.status(404).sendFile(path.join(ROOT_DIR, "404.html"));
 });
 
 app.listen(PORT, () => {

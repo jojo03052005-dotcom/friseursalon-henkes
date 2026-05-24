@@ -25,13 +25,11 @@
 
 const { Resend } = require("resend");
 
-const SALON = {
-  name: "Friseursalon Henkes",
-  phone: "0209 41793",
-  phoneTel: "020941793",
-  address: "Fürstinnenstraße 40",
-  city: "45883 Gelsenkirchen",
-};
+const {
+  SALON,
+  SERVICE_DURATIONS_MINUTES,
+  DEFAULT_SERVICE_DURATION_MINUTES,
+} = require("../lib/config");
 
 const DEFAULT_FROM = `${SALON.name} <onboarding@resend.dev>`;
 
@@ -119,21 +117,6 @@ function germanLocalToISOString(dateStr, timeStr) {
 }
 
 /**
- * Default-Dauern pro Leistung, in Minuten. Wird fuer den ICS-Kalender-
- * Eintrag benoetigt (sonst weiss die Kalender-App nicht, wie lang der
- * Block belegt sein soll). Werte sind grosszuegig geschaetzt; der Salon
- * kann das beim Termin anpassen.
- */
-const SERVICE_DURATIONS_MINUTES = {
-  Haarschnitt: 45,
-  Färbung: 90,
-  Strähnen: 120,
-  Styling: 60,
-  Haarpflege: 45,
-};
-const DEFAULT_DURATION_MINUTES = 60;
-
-/**
  * Formatiert ein Date als UTC fuer das ICS-Format (YYYYMMDDTHHMMSSZ).
  */
 function toICSUtc(date) {
@@ -150,7 +133,7 @@ function buildICSAttachment(appointment) {
 
   const start = new Date(startIso);
   const durationMin =
-    SERVICE_DURATIONS_MINUTES[appointment.service] || DEFAULT_DURATION_MINUTES;
+    SERVICE_DURATIONS_MINUTES[appointment.service] || DEFAULT_SERVICE_DURATION_MINUTES;
   const end = new Date(start.getTime() + durationMin * 60 * 1000);
   const now = new Date();
 
@@ -1224,5 +1207,4 @@ module.exports = {
   sendDailyDigestEmail,
   isEmailConfigured,
   getMailConfig,
-  SALON,
 };
