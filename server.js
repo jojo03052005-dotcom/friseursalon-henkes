@@ -8,7 +8,6 @@ require("dotenv").config();
 const express = require("express");
 const helmet = require("helmet");
 const rateLimit = require("express-rate-limit");
-const fs = require("fs/promises");
 const path = require("path");
 const { randomUUID, timingSafeEqual } = require("crypto");
 
@@ -25,9 +24,6 @@ const {
   SAME_DAY_LEAD_TIME_MS,
   DEDUPE_WINDOW_MS,
   ROOT_DIR,
-  DATA_DIR,
-  APPOINTMENTS_FILE,
-  CLOSED_DAYS_FILE,
   DEFAULT_ALLOWED_ORIGINS,
   NETLIFY_PREVIEW_REGEX,
 } = require("./lib/config");
@@ -44,6 +40,14 @@ const {
 
 const { escapeHtml } = require("./lib/escape");
 const logger = require("./lib/logger");
+const {
+  readAll: readAppointments,
+  writeAll: writeAppointments,
+  findById: findAppointmentById,
+  findByCancelToken,
+  remove: removeAppointment,
+  readClosedDays,
+} = require("./lib/storage");
 
 const log = logger.child("server");
 
@@ -55,21 +59,6 @@ function isAllowedOrigin(origin, exactSet) {
   if (exactSet.has(origin)) return true;
   if (NETLIFY_PREVIEW_REGEX.test(origin)) return true;
   return false;
-}
-
-/**
- * Liest die Schliesstage-Liste (Feiertage, Betriebsferien) aus
- * data/closed-days.json. Datei fehlt oder ungueltig? -> leer.
- * Wird einmal pro Validierung gelesen -- klein genug fuer JSON.
- */
-async function readClosedDays() {
-  try {
-    const raw = await fs.readFile(CLOSED_DAYS_FILE, "utf8");
-    const data = JSON.parse(raw);
-    return new Set(Array.isArray(data.days) ? data.days : []);
-  } catch (_err) {
-    return new Set();
-  }
 }
 
 /* ---------------- Rate-Limiting ---------------- */
@@ -186,28 +175,6 @@ app.get("/api/services", (_req, res) => {
   res.set("Cache-Control", "public, max-age=300"); // 5 Min cache
   res.json({ success: true, services: ALLOWED_SERVICES });
 });
-
-async function readAppointments() {
-  try {
-    const raw = await fs.readFile(APPOINTMENTS_FILE, "utf8");
-    const data = JSON.parse(raw);
-    return Array.isArray(data) ? data : [];
-  } catch (error) {
-    if (error.code === "ENOENT") {
-      await fs.mkdir(DATA_DIR, { recursive: true });
-      await fs.writeFile(APPOINTMENTS_FILE, "[]", "utf8");
-      return [];
-    }
-    throw error;
-  }
-}
-
-async function writeAppointments(appointments) {
-  await fs.mkdir(DATA_DIR, { recursive: true });
-  const tempFile = `${APPOINTMENTS_FILE}.tmp`;
-  await fs.writeFile(tempFile, JSON.stringify(appointments, null, 2), "utf8");
-  await fs.rename(tempFile, APPOINTMENTS_FILE);
-}
 
 async function validateAppointment(payload) {
   const errors = [];
@@ -706,17 +673,6 @@ app.post("/api/appointments", bookingLimiter, async (req, res) => {
 /* ---------------- Admin: Bestaetigen / Ablehnen ---------------- */
 
 /**
- * Hilfsfunktion: liest Termine und gibt das passende Element +
- * Index zurueck. Setzt selbst keine HTTP-Antworten.
- */
-async function findAppointmentById(id) {
-  const appointments = await readAppointments();
-  const index = appointments.findIndex((item) => item.id === id);
-  if (index === -1) return { appointments, appointment: null, index: -1 };
-  return { appointments, appointment: appointments[index], index };
-}
-
-/**
  * POST /api/admin/appointments/:id/confirm
  * Markiert den Termin als bestaetigt, sendet die Bestaetigungs-Mail
  * an den Kunden und plant die 24h-Erinnerung via Resend.
@@ -1036,19 +992,17 @@ app.delete(
         return res.status(400).json({ success: false, message: "Termin-ID fehlt." });
       }
 
-      const appointments = await readAppointments();
-      const index = appointments.findIndex((item) => item.id === id);
-
-      if (index === -1) {
+      const removed = await removeAppointment(id);
+      if (!removed) {
         return res.status(404).json({ success: false, message: "Termin nicht gefunden." });
       }
 
-      const removed = appointments.splice(index, 1)[0];
-      await writeAppointments(appointments);
-
-      console.log(
-        `[Admin-Loeschen] ${removed.name} – ${removed.date} ${removed.time} (id ${removed.id})`
-      );
+      log.info("appointment_deleted", {
+        id: removed.id,
+        name: removed.name,
+        date: removed.date,
+        time: removed.time,
+      });
 
       return res.json({
         success: true,
@@ -1291,8 +1245,7 @@ app.get("/storno/:token", cancelLimiter, async (req, res) => {
       return res.status(404).type("html").send(renderStornoNotFound());
     }
 
-    const appointments = await readAppointments();
-    const appointment = appointments.find((item) => item.cancelToken === token);
+    const { appointment } = await findByCancelToken(token);
 
     if (!appointment) {
       return res.status(404).type("html").send(renderStornoNotFound());
@@ -1317,14 +1270,11 @@ app.post("/storno/:token", cancelLimiter, async (req, res) => {
       return res.status(404).type("html").send(renderStornoNotFound());
     }
 
-    const appointments = await readAppointments();
-    const index = appointments.findIndex((item) => item.cancelToken === token);
+    const { appointments, appointment, index } = await findByCancelToken(token);
 
-    if (index === -1) {
+    if (!appointment) {
       return res.status(404).type("html").send(renderStornoNotFound());
     }
-
-    const appointment = appointments[index];
 
     // Bereits storniert -> idempotent
     if (appointment.cancelled) {
