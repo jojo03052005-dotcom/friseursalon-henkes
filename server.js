@@ -9,7 +9,7 @@ const express = require("express");
 const helmet = require("helmet");
 const rateLimit = require("express-rate-limit");
 const path = require("path");
-const { randomUUID, timingSafeEqual } = require("crypto");
+const { randomUUID } = require("crypto");
 
 const {
   SALON,
@@ -48,6 +48,7 @@ const {
   remove: removeAppointment,
   readClosedDays,
 } = require("./lib/storage");
+const { requireAdminAuth, safeStringEqual } = require("./lib/auth");
 
 const log = logger.child("server");
 
@@ -327,78 +328,6 @@ function deriveBaseUrl(req) {
   const proto = req.get("x-forwarded-proto") || req.protocol || "http";
   const host = req.get("x-forwarded-host") || req.get("host");
   return host ? `${proto}://${host}` : "";
-}
-
-/* ---------------- Admin-Auth (HTTP Basic) ---------------- */
-
-/**
- * Konstantzeit-Vergleich zweier Strings. Bei unterschiedlicher Laenge wird
- * trotzdem ein Dummy-Vergleich gegen einen gleichlangen Nullbuffer ausgefuehrt,
- * damit kein Timing-Leak ueber die Laenge entsteht.
- */
-function safeStringEqual(a, b) {
-  const aBuf = Buffer.from(String(a ?? ""), "utf8");
-  const bBuf = Buffer.from(String(b ?? ""), "utf8");
-  if (aBuf.length !== bBuf.length) {
-    // Dummy-Vergleich gleicher Laenge, Ergebnis verwerfen.
-    timingSafeEqual(aBuf, Buffer.alloc(aBuf.length));
-    return false;
-  }
-  return timingSafeEqual(aBuf, bBuf);
-}
-
-function sendAuthChallenge(res, status, message) {
-  res.setHeader("WWW-Authenticate", 'Basic realm="Friseursalon Henkes Admin", charset="UTF-8"');
-  res.status(status).type("text/plain; charset=utf-8").send(message);
-}
-
-/**
- * Express-Middleware: schuetzt Admin-Routen per HTTP Basic Auth.
- * Erwartet ADMIN_USER und ADMIN_PASSWORD in den Umgebungsvariablen.
- * Wenn die Vars fehlen, antwortet die Route mit 503 -- der Admin-Bereich
- * ist dann komplett gesperrt, statt versehentlich offen zu sein.
- */
-function requireAdminAuth(req, res, next) {
-  const expectedUser = process.env.ADMIN_USER?.trim();
-  const expectedPass = process.env.ADMIN_PASSWORD?.trim();
-
-  if (!expectedUser || !expectedPass) {
-    return res
-      .status(503)
-      .type("text/plain; charset=utf-8")
-      .send(
-        "Admin-Login ist nicht konfiguriert. Bitte ADMIN_USER und ADMIN_PASSWORD in den Render-Env-Vars setzen."
-      );
-  }
-
-  const header = req.headers.authorization || "";
-  const match = header.match(/^Basic\s+(.+)$/i);
-
-  if (!match) {
-    return sendAuthChallenge(res, 401, "Anmeldung erforderlich.");
-  }
-
-  let user = "";
-  let pass = "";
-  try {
-    const decoded = Buffer.from(match[1], "base64").toString("utf8");
-    const colon = decoded.indexOf(":");
-    if (colon >= 0) {
-      user = decoded.slice(0, colon);
-      pass = decoded.slice(colon + 1);
-    }
-  } catch (_err) {
-    return sendAuthChallenge(res, 401, "Ungueltige Anmeldedaten.");
-  }
-
-  const userOk = safeStringEqual(user, expectedUser);
-  const passOk = safeStringEqual(pass, expectedPass);
-
-  if (!userOk || !passOk) {
-    return sendAuthChallenge(res, 401, "Falsche Anmeldedaten.");
-  }
-
-  return next();
 }
 
 /** GET /api/appointments – Admin-only Liste aller Buchungen. */
