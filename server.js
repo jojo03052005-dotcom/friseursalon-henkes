@@ -27,6 +27,7 @@ const {
 const { requireAdminAuth } = require("./lib/auth");
 const stornoViews = require("./lib/views/storno");
 const logger = require("./lib/logger");
+const { runStartupCheck } = require("./lib/startup-check");
 const { isEmailConfigured } = require("./services/emailService");
 
 const publicRouter = require("./routes/public");
@@ -176,11 +177,10 @@ const server = app.listen(PORT, () => {
     emailConfigured: isEmailConfigured(),
     pid: process.pid,
   });
-  if (!isEmailConfigured()) {
-    log.warn("email_not_configured", {
-      hint: "RESEND_API_KEY and SALON_EMAIL must be set for email delivery",
-    });
-  }
+  // Startup-Check NACH dem Listener-Log: Warnungen sind sichtbar, der
+  // Server laeuft aber auch bei unvollstaendiger Config (fail-soft,
+  // damit der Operator das im Browser sieht statt vor schwarzem Bildschirm).
+  runStartupCheck();
 });
 
 /* ---------------- Graceful Shutdown ---------------- */
