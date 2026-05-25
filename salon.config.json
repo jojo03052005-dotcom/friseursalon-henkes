@@ -1,0 +1,38 @@
+{
+  "_comment": "Salon-spezifische Konfiguration. Eine Datei pro Deployment. Backend liest beim Start und uebergibt an lib/config.js. Aenderungen erfordern einen Redeploy.",
+
+  "salon": {
+    "name": "Friseursalon Henkes",
+    "phone": "0209 41793",
+    "phoneTel": "020941793",
+    "phoneInternational": "4920941793",
+    "address": "Fürstinnenstraße 40",
+    "city": "45883 Gelsenkirchen",
+    "country": "DE"
+  },
+
+  "_hoursComment": "Pro Wochentag (0=So .. 6=Sa). Fehlt der Wochentag -> zu. Werte sind 'HH:MM' im Salon-lokalen Tag.",
+  "hours": {
+    "2": { "open": "09:00", "close": "18:00" },
+    "3": { "open": "09:00", "close": "18:00" },
+    "4": { "open": "09:00", "close": "18:00" },
+    "5": { "open": "09:00", "close": "18:00" },
+    "6": { "open": "08:00", "close": "14:00" }
+  },
+
+  "_servicesComment": "Buchbare Leistungen. Reihenfolge bestimmt das Dropdown im Frontend. Dauer in Minuten fuer den ICS-Anhang.",
+  "services": [
+    { "name": "Haarschnitt", "durationMinutes": 45 },
+    { "name": "Färbung",    "durationMinutes": 90 },
+    { "name": "Strähnen",   "durationMinutes": 120 },
+    { "name": "Styling",    "durationMinutes": 60 },
+    { "name": "Haarpflege", "durationMinutes": 45 }
+  ],
+
+  "booking": {
+    "maxBookingHorizonDays": 90,
+    "sameDayLeadTimeMinutes": 60,
+    "maxNotesLength": 500,
+    "dedupeWindowSeconds": 60
+  }
+}
