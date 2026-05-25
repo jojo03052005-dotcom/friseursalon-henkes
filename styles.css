@@ -339,6 +339,36 @@ h3 {
   color: rgba(255, 255, 255, 0.75);
 }
 
+.hours-compact.is-open strong {
+  color: #b8d4a8;
+}
+
+.hours-compact.is-open strong::before {
+  content: "● ";
+  color: #7ec47e;
+  font-size: 0.7em;
+  vertical-align: middle;
+  animation: pulse-dot 2s ease-in-out infinite;
+}
+
+.hours-compact.is-closed strong::before {
+  content: "● ";
+  color: #a89684;
+  font-size: 0.7em;
+  vertical-align: middle;
+}
+
+@keyframes pulse-dot {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.45; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .hours-compact strong::before {
+    animation: none;
+  }
+}
+
 .hours-compact {
   display: grid;
   gap: 4px;

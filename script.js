@@ -164,6 +164,90 @@ function clearFormDraft() {
   }
 }
 
+/**
+ * Berechnet live den aktuellen Oeffnungs-Status anhand der Salon-
+ * Stunden. Mirror von SALON_HOURS aus lib/config.js -- wenn dort
+ * geaendert, muss hier auch geaendert werden. Doku-Hinweis: einzige
+ * bewusste Duplizierung im Codebase (Backend kann nicht ins Browser-JS
+ * geladen werden ohne Build-Step, und Build-Step wollen wir nicht).
+ *
+ * Bewusst lokale Zeit (Salon ist in DE, Kunde auch -- wer aus dem
+ * Ausland bucht, dem ist die exakte "jetzt offen"-Anzeige egal).
+ */
+const SALON_HOURS = {
+  // 0=So, 1=Mo => zu
+  2: { open: 9 * 60, close: 18 * 60, label: "Di" },
+  3: { open: 9 * 60, close: 18 * 60, label: "Mi" },
+  4: { open: 9 * 60, close: 18 * 60, label: "Do" },
+  5: { open: 9 * 60, close: 18 * 60, label: "Fr" },
+  6: { open: 8 * 60, close: 14 * 60, label: "Sa" },
+};
+const WEEKDAY_NAMES = ["Sonntag", "Montag", "Dienstag", "Mittwoch", "Donnerstag", "Freitag", "Samstag"];
+
+function formatTime(mins) {
+  const h = Math.floor(mins / 60);
+  return `${h}:${String(mins % 60).padStart(2, "0")}`;
+}
+
+function computeOpeningStatus(now = new Date()) {
+  const dow = now.getDay();
+  const nowMins = now.getHours() * 60 + now.getMinutes();
+  const today = SALON_HOURS[dow];
+
+  if (today && nowMins >= today.open && nowMins < today.close) {
+    return {
+      open: true,
+      label: "Jetzt geöffnet",
+      detail: `Schließt um ${formatTime(today.close)} Uhr`,
+    };
+  }
+  if (today && nowMins < today.open) {
+    return {
+      open: false,
+      label: "Heute geschlossen",
+      detail: `Öffnet um ${formatTime(today.open)} Uhr`,
+    };
+  }
+  // Heute schon zu oder Salon hat heute ganz zu. Naechsten Oeffnungstag suchen.
+  for (let offset = 1; offset <= 7; offset++) {
+    const nextDow = (dow + offset) % 7;
+    const nextHours = SALON_HOURS[nextDow];
+    if (nextHours) {
+      const dayLabel = offset === 1 ? "morgen" : WEEKDAY_NAMES[nextDow];
+      return {
+        open: false,
+        label: "Heute geschlossen",
+        detail: `Öffnet ${dayLabel} um ${formatTime(nextHours.open)} Uhr`,
+      };
+    }
+  }
+  return { open: false, label: "Geschlossen", detail: "" };
+}
+
+function renderOpeningStatus() {
+  const status = computeOpeningStatus();
+  const widget = document.querySelector("[data-opening-status]");
+  if (widget) {
+    const strong = widget.querySelector("strong");
+    const span = widget.querySelector("span");
+    if (strong) strong.textContent = status.label;
+    if (span) span.textContent = status.detail || "Di–Fr 9–18 · Sa 8–14";
+    widget.classList.toggle("is-open", status.open);
+    widget.classList.toggle("is-closed", !status.open);
+  }
+  const contact = document.querySelector("[data-contact-status]");
+  if (contact) {
+    contact.textContent = status.open
+      ? `Jetzt geöffnet · ${status.detail}`
+      : status.detail;
+  }
+}
+
+renderOpeningStatus();
+// Status alle 60s aktualisieren -- relevant fuer Kunden, die die Seite
+// lange offen lassen und ueber die Schliessungszeit hinwegrutschen.
+setInterval(renderOpeningStatus, 60 * 1000);
+
 restoreFormDraft();
 if (bookingForm) {
   let saveTimer = null;
