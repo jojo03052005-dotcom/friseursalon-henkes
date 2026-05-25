@@ -244,6 +244,30 @@ function renderOpeningStatus() {
 }
 
 renderOpeningStatus();
+
+// Sticky Mobile-CTA erst einblenden wenn der Kunde gescrollt hat
+// (sofort sichtbar bei Page-Load waere aufdringlich). Versteckt sich
+// wieder, wenn der Buchungs-Bereich sichtbar ist (dort gibt's eh den
+// Submit-Button).
+const mobileCta = document.querySelector("[data-mobile-cta]");
+const bookingSection = document.querySelector("#termin");
+if (mobileCta && bookingSection && "IntersectionObserver" in window) {
+  let scrolled = false;
+  window.addEventListener("scroll", () => {
+    if (!scrolled && window.scrollY > 600) {
+      scrolled = true;
+      mobileCta.classList.add("is-visible");
+    }
+  }, { passive: true });
+
+  // Wenn der Termin-Bereich im Viewport ist -> CTA verstecken.
+  const bookingObserver = new IntersectionObserver((entries) => {
+    entries.forEach((entry) => {
+      mobileCta.classList.toggle("is-visible", !entry.isIntersecting && scrolled);
+    });
+  }, { threshold: 0.1 });
+  bookingObserver.observe(bookingSection);
+}
 // Status alle 60s aktualisieren -- relevant fuer Kunden, die die Seite
 // lange offen lassen und ueber die Schliessungszeit hinwegrutschen.
 setInterval(renderOpeningStatus, 60 * 1000);

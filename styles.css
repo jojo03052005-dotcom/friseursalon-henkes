@@ -303,6 +303,49 @@ h3 {
   background: var(--cream);
 }
 
+/* WhatsApp-CTA: gruener als Standard-Ghost, damit Kunden sie sofort
+   wahrnehmen. Auf Light-Header-Hintergrund explizit dunkel halten. */
+.wa-cta {
+  border-color: #25d366;
+  color: #25d366;
+  background: rgba(37, 211, 102, 0.08);
+}
+.wa-cta:hover {
+  background: rgba(37, 211, 102, 0.18);
+  border-color: #1ea952;
+}
+
+/* Sticky Mobile-CTA: nur auf Touch-Devices, am unteren Rand. */
+.mobile-cta {
+  display: none;
+  position: fixed;
+  bottom: 16px;
+  left: 16px;
+  right: 16px;
+  z-index: 30;
+  padding: 14px 20px;
+  text-align: center;
+  font-weight: 800;
+  color: var(--espresso);
+  background: var(--gold);
+  border-radius: 8px;
+  box-shadow: 0 10px 30px rgba(36, 23, 19, 0.32);
+  transform: translateY(110%);
+  transition: transform 0.3s ease;
+}
+.mobile-cta.is-visible {
+  transform: translateY(0);
+}
+@media (max-width: 900px) {
+  .mobile-cta {
+    display: block;
+  }
+  /* Footer-Padding damit der CTA nicht den letzten Footer-Link verdeckt */
+  .site-footer {
+    padding-bottom: 90px;
+  }
+}
+
 .hero-card {
   display: grid;
   gap: 18px;

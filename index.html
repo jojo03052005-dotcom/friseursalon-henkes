@@ -161,6 +161,9 @@
         <div class="hero-actions">
           <a class="button primary" href="#termin">Termin vereinbaren</a>
           <a class="button ghost" href="tel:020941793">0209 41793 anrufen</a>
+          <a class="button ghost wa-cta" href="https://wa.me/4920941793?text=Hallo%2C%20ich%20m%C3%B6chte%20gern%20einen%20Termin%20anfragen." target="_blank" rel="noopener" aria-label="Termin per WhatsApp anfragen">
+            <span aria-hidden="true">✆</span> WhatsApp
+          </a>
         </div>
       </div>
 
@@ -484,6 +487,15 @@
       </div>
     </section>
   </main>
+
+  <!--
+    Mobile-Only sticky CTA: erscheint nach Scrollen am unteren Rand,
+    damit der Termin-Button immer einen Daumen-Tap entfernt ist.
+    Auf Desktop versteckt (CSS).
+  -->
+  <a class="mobile-cta" href="#termin" data-mobile-cta aria-label="Termin anfragen">
+    Termin anfragen
+  </a>
 
   <footer class="site-footer">
     <div>
