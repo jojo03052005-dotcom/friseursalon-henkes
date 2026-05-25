@@ -42,3 +42,15 @@ services:
       # (z.B. cron-job.org) uebereinstimmen.
       - key: CRON_SECRET
         sync: false
+      # Pflicht fuer persistente Termin-Daten: Pfad zum Render-Disk-Mount.
+      # Wenn nicht gesetzt -> Server laeuft mit ephemerem Filesystem,
+      # Termine gehen bei jedem Deploy/Restart verloren!
+      # Voraussetzung: Disk im Render-Dashboard angehaengt, Mount-Path
+      # /var/data/henkes (siehe DEPLOYMENT_CHECKLIST.md).
+      - key: HENKES_DATA_DIR
+        value: /var/data/henkes
+      # Optional: Backup-Frequenz und Retention.
+      # - key: HENKES_BACKUP_INTERVAL_HOURS
+      #   value: "6"
+      # - key: HENKES_BACKUP_RETENTION
+      #   value: "14"
