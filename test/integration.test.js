@@ -79,7 +79,10 @@ function buildTestApp() {
     }
     res.setHeader("Vary", "Origin");
     res.setHeader("Access-Control-Allow-Methods", "GET,POST,DELETE,OPTIONS");
-    res.setHeader("Access-Control-Allow-Headers", "Content-Type,Authorization");
+    res.setHeader(
+      "Access-Control-Allow-Headers",
+      "Content-Type,Authorization,X-Idempotency-Key"
+    );
     if (req.method === "OPTIONS") return res.sendStatus(204);
     next();
   });
@@ -261,6 +264,54 @@ test("POST /api/appointments: invalid service -> 400", async () => {
     body: validBooking({ service: "Massage" }),
   });
   assert.equal(r.status, 400);
+});
+
+test("POST /api/appointments: idempotency-key replay returns same appointment", async () => {
+  const key = "test-idempotency-key-abc-12345";
+  const payload = validBooking({ email: "idem@example.com", time: "12:00" });
+
+  const r1 = await request("POST", "/api/appointments", {
+    body: payload,
+    headers: { "X-Idempotency-Key": key },
+  });
+  assert.equal(r1.status, 201);
+  const firstId = r1.json.appointment.id;
+
+  // Selber Key + leicht geaenderte Payload -> immer noch der gleiche Termin
+  const r2 = await request("POST", "/api/appointments", {
+    body: { ...payload, notes: "different notes" },
+    headers: { "X-Idempotency-Key": key },
+  });
+  assert.equal(r2.status, 200);
+  assert.equal(r2.json.duplicate, true);
+  assert.equal(r2.json.appointment.id, firstId);
+
+  // Ohne Key + identische Payload -> normale Dedupe greift (gleiches Resultat,
+  // aber anderer Code-Path)
+  const r3 = await request("POST", "/api/appointments", {
+    body: payload,
+  });
+  assert.equal(r3.status, 200);
+  assert.equal(r3.json.duplicate, true);
+});
+
+test("POST /api/appointments: different idempotency-key creates new appointment", async () => {
+  const payload = validBooking({ email: "diff-key@example.com", time: "12:15" });
+  const r1 = await request("POST", "/api/appointments", {
+    body: payload,
+    headers: { "X-Idempotency-Key": "key-A-xyz-001" },
+  });
+  assert.equal(r1.status, 201);
+
+  // Anderer Key -> aber identische Payload -> 60s-Dedupe greift trotzdem
+  // (das ist gewollt -- der ist die zweite Verteidigungslinie)
+  const r2 = await request("POST", "/api/appointments", {
+    body: payload,
+    headers: { "X-Idempotency-Key": "key-B-xyz-002" },
+  });
+  // Dedupe greift -> duplicate:true, gleicher Termin
+  assert.equal(r2.status, 200);
+  assert.equal(r2.json.duplicate, true);
 });
 
 test("POST /api/appointments: duplicate within 60s -> 200 duplicate:true", async () => {

@@ -186,13 +186,32 @@ let isSubmitting = false;
  * versucht -- haeufige Ursache ist Render-Cold-Start, der nach
  * 30-60s bereit ist.
  */
-async function submitBooking(payload, timeoutMs) {
+/**
+ * Generiert einen Idempotency-Key. randomUUID gibt's in allen modernen
+ * Browsern; Fallback fuer alte: Math.random-Hash. Ein Key wird PRO
+ * Submit-Zyklus generiert -- nicht pro Versuch -- damit Retries
+ * idempotent zur Server-Sicht sind.
+ */
+function makeIdempotencyKey() {
+  if (window.crypto?.randomUUID) return window.crypto.randomUUID();
+  return (
+    "k-" +
+    Date.now().toString(36) +
+    "-" +
+    Math.random().toString(36).slice(2, 12)
+  );
+}
+
+async function submitBooking(payload, timeoutMs, idempotencyKey) {
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), timeoutMs);
   try {
     const response = await fetch(`${API_BASE}/api/appointments`, {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
+      headers: {
+        "Content-Type": "application/json",
+        "X-Idempotency-Key": idempotencyKey,
+      },
       body: JSON.stringify(payload),
       signal: controller.signal,
     });
@@ -244,12 +263,20 @@ bookingForm.addEventListener("submit", async (event) => {
   const MAX_ATTEMPTS = 2;
   const PER_ATTEMPT_TIMEOUT_MS = 90 * 1000;
 
+  // Ein Key fuer den gesamten Submit-Zyklus -- der Server erkennt
+  // damit Retry-Duplikate auch wenn die Payload sich minimal aendert.
+  const idempotencyKey = makeIdempotencyKey();
+
   let lastError = null;
   let success = false;
 
   for (let attempt = 1; attempt <= MAX_ATTEMPTS; attempt++) {
     try {
-      const response = await submitBooking(payload, PER_ATTEMPT_TIMEOUT_MS);
+      const response = await submitBooking(
+        payload,
+        PER_ATTEMPT_TIMEOUT_MS,
+        idempotencyKey
+      );
       clearTimeout(slowHintTimer);
       clearTimeout(verySlowHintTimer);
 

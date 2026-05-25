@@ -70,6 +70,17 @@ router.post(
       });
     }
 
+    // Idempotency-Key: bulletproof Schutz gegen Doppel-Submit bei
+    // Netzwerk-Blip. Wenn der Client denselben Key zweimal schickt,
+    // liefern wir das existierende Appointment zurueck statt ein neues
+    // anzulegen. Funktioniert auch wenn die Payload sich minimal
+    // unterscheidet (z.B. Whitespace in Notes), waehrend der reine
+    // 60s-Payload-Dedupe nur exakte Matches faengt.
+    const idempotencyKey =
+      typeof req.headers["x-idempotency-key"] === "string"
+        ? req.headers["x-idempotency-key"].trim().slice(0, 100)
+        : "";
+
     const validation = await validateAppointment(req.body);
     if (!validation.ok) {
       return res.status(400).json({
@@ -81,6 +92,33 @@ router.post(
 
     const appointments = await readAll();
     const createdAt = new Date().toISOString();
+
+    if (idempotencyKey) {
+      const existing = appointments.find(
+        (item) => item.idempotencyKey === idempotencyKey
+      );
+      if (existing) {
+        logger.info("idempotent_replay", {
+          id: existing.id,
+          key: idempotencyKey.slice(0, 8) + "...",
+        });
+        return res.status(200).json({
+          success: true,
+          duplicate: true,
+          message:
+            "Wir haben Ihre Anfrage bereits erhalten – alles gut. Sie bekommen gleich (oder haben gerade schon) eine Eingangs-Mail von uns.",
+          appointment: {
+            id: existing.id,
+            name: existing.name,
+            email: existing.email,
+            date: existing.date,
+            time: existing.time,
+            service: existing.service,
+            emailStatus: existing.emailStatus,
+          },
+        });
+      }
+    }
 
     // Doppel-Submit-Dedupe: gleiche (email, date, time, service) innerhalb
     // des Dedupe-Fensters -> bestehenden Eintrag zurueckliefern, kein neuer.
@@ -136,6 +174,7 @@ router.post(
     const appointment = {
       id: randomUUID(),
       cancelToken: randomUUID(),
+      idempotencyKey: idempotencyKey || null,
       ...validation.data,
       createdAt,
       cancelled: false,
