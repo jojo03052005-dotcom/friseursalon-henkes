@@ -130,8 +130,12 @@ function buildICSAttachment(appointment) {
   const end = new Date(start.getTime() + durationMin * 60 * 1000);
   const now = new Date();
 
-  // Description: ICS verlangt CRLF und escapete Sonderzeichen
-  // (Komma, Backslash, Semikolon, Newline) -- siehe lib/escape.js.
+  // Description: jede Zeile EINZELN escapen (Komma, Semikolon, Backslash,
+  // Newline werden ICS-konform mit Backslash escapet), DANN mit dem ICS-
+  // Zeilen-Separator "\n" (literal backslash-n) joinen. Wuerden wir die
+  // Werte unescapet zusammenkleben, koennten Kommas im Adresse-Feld oder
+  // Sonderzeichen in Kundennotizen den ganzen DESCRIPTION-Block zerlegen --
+  // einige Kalender-Apps ignorieren den Termin dann komplett.
   const description = [
     `Leistung: ${appointment.service}`,
     `Salon: ${SALON.name}`,
@@ -140,6 +144,7 @@ function buildICSAttachment(appointment) {
     appointment.notes ? `Ihre Notiz: ${appointment.notes}` : null,
   ]
     .filter(Boolean)
+    .map(escapeIcs)
     .join("\\n");
 
   const lines = [
@@ -1193,4 +1198,19 @@ module.exports = {
   sendDailyDigestEmail,
   isEmailConfigured,
   getMailConfig,
+  // Fuer Tests exportiert; nicht in Routen verwenden.
+  __testables: {
+    buildICSAttachment,
+    germanLocalToISOString,
+    getReminderTime,
+    mapEmailError,
+    buildCustomerEmail,
+    buildReminderEmail,
+    buildConfirmedEmail,
+    buildDeclineEmail,
+    buildAdminCancellationEmail,
+    buildSalonEmail,
+    buildCancellationEmail,
+    buildDailyDigestEmail,
+  },
 };
