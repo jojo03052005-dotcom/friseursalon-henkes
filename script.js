@@ -100,6 +100,80 @@ const setMinBookingDate = () => {
 setMinBookingDate();
 
 /**
+ * Speichert das halb-ausgefuellte Formular in localStorage und stellt
+ * es beim naechsten Besuch wieder her. Schuetzt Kunden mit wackeliger
+ * Verbindung -- wenn der Submit fehlschlaegt und sie die Seite neu
+ * laden, sind ihre Eingaben noch da.
+ *
+ * Wird bei erfolgreicher Buchung wieder geleert.
+ *
+ * Keine PII-Bedenken: Daten liegen NUR im Browser des Kunden selbst,
+ * werden nirgendwo hingesendet.
+ */
+const FORM_STORAGE_KEY = "henkes-booking-draft-v1";
+const FORM_STORAGE_FIELDS = ["name", "phone", "email", "date", "time", "service", "notes"];
+
+function saveFormDraft() {
+  if (!bookingForm) return;
+  try {
+    const draft = {};
+    for (const field of FORM_STORAGE_FIELDS) {
+      const el = bookingForm.elements[field];
+      if (el && el.value) draft[field] = el.value;
+    }
+    if (Object.keys(draft).length === 0) {
+      window.localStorage.removeItem(FORM_STORAGE_KEY);
+      return;
+    }
+    draft._savedAt = new Date().toISOString();
+    window.localStorage.setItem(FORM_STORAGE_KEY, JSON.stringify(draft));
+  } catch (_err) {
+    // localStorage voll oder disabled -> still ignorieren
+  }
+}
+
+function restoreFormDraft() {
+  if (!bookingForm) return;
+  try {
+    const raw = window.localStorage.getItem(FORM_STORAGE_KEY);
+    if (!raw) return;
+    const draft = JSON.parse(raw);
+    // Drafts aelter als 7 Tage verwerfen (uralte Wunschtermine
+    // koennten in der Vergangenheit liegen).
+    if (draft._savedAt) {
+      const ageMs = Date.now() - new Date(draft._savedAt).getTime();
+      if (ageMs > 7 * 24 * 60 * 60 * 1000) {
+        window.localStorage.removeItem(FORM_STORAGE_KEY);
+        return;
+      }
+    }
+    for (const field of FORM_STORAGE_FIELDS) {
+      const el = bookingForm.elements[field];
+      if (el && draft[field]) el.value = draft[field];
+    }
+  } catch (_err) {
+    // ignore
+  }
+}
+
+function clearFormDraft() {
+  try {
+    window.localStorage.removeItem(FORM_STORAGE_KEY);
+  } catch (_err) {
+    // ignore
+  }
+}
+
+restoreFormDraft();
+if (bookingForm) {
+  let saveTimer = null;
+  bookingForm.addEventListener("input", () => {
+    if (saveTimer) clearTimeout(saveTimer);
+    saveTimer = setTimeout(saveFormDraft, 500);
+  });
+}
+
+/**
  * Holt die aktuelle Service-Liste vom Backend und ersetzt die Optionen im
  * <select>, falls sie sich geaendert haben. Schlaegt der Fetch fehl (z.B.
  * Render-Cold-Start), bleibt die statische Default-Liste aus dem HTML
@@ -298,6 +372,7 @@ bookingForm.addEventListener("submit", async (event) => {
 
       bookingForm.reset();
       setMinBookingDate();
+      clearFormDraft();
       success = true;
       break;
     } catch (error) {
