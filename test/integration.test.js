@@ -160,14 +160,20 @@ function basicAuth(user, pass) {
 
 /* ---------------- Health / Services ---------------- */
 
-test("GET /api/health -> 200 with expected payload", async () => {
+test("GET /api/health -> 200 with operational status", async () => {
   const r = await request("GET", "/api/health");
   assert.equal(r.status, 200);
   assert.equal(r.json.success, true);
   assert.equal(r.json.service, "friseursalon-henkes-backend");
   assert.equal(r.json.emailConfigured, false); // RESEND_API_KEY nicht gesetzt
   assert.ok(typeof r.json.uptimeSeconds === "number");
-  assert.ok(typeof r.json.appointmentCount === "number");
+  assert.equal(typeof r.json.appointmentsFile, "object");
+  assert.equal(typeof r.json.appointmentsFile.count, "number");
+  assert.equal(typeof r.json.storage, "object");
+  assert.equal(typeof r.json.backup, "object");
+  assert.equal(typeof r.json.memory, "object");
+  assert.ok(Array.isArray(r.json.warnings));
+  assert.ok(typeof r.json.version === "string");
 });
 
 test("GET /api/services -> 200 with the 5 services", async () => {

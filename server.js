@@ -28,6 +28,8 @@ const { requireAdminAuth } = require("./lib/auth");
 const stornoViews = require("./lib/views/storno");
 const logger = require("./lib/logger");
 const { runStartupCheck } = require("./lib/startup-check");
+const storage = require("./lib/storage");
+const backup = require("./lib/backup");
 const { isEmailConfigured } = require("./services/emailService");
 
 const publicRouter = require("./routes/public");
@@ -181,7 +183,70 @@ const server = app.listen(PORT, () => {
   // Server laeuft aber auch bei unvollstaendiger Config (fail-soft,
   // damit der Operator das im Browser sieht statt vor schwarzem Bildschirm).
   runStartupCheck();
+  // Boot-Diagnostik fuer Storage + Backup (async, blockiert nicht).
+  runBootDiagnostics().catch((err) => {
+    log.error("boot_diagnostics_failed", { error: err.message });
+  });
+  // Backup-Scheduler starten (no-op wenn HENKES_BACKUP_DISABLED=1).
+  backup.start();
 });
+
+/* ---------------- Boot-Diagnostics ---------------- */
+
+/**
+ * Beim Start: pruefen ob DATA_DIR beschreibbar ist und ob die
+ * appointments.json valide JSON enthaelt. Bei Korruption -> Auto-
+ * Recovery aus dem letzten validen Backup. Sehr ausfuehrliches Logging,
+ * damit der Operator in den Render-Logs sieht was passierte.
+ */
+async function runBootDiagnostics() {
+  // 1. Storage-Writability
+  try {
+    const result = await storage.checkWritable();
+    log.info("storage_writable", result);
+    if (!result.persistent && process.env.NODE_ENV === "production") {
+      log.warn("storage_ephemeral_in_production", {
+        message:
+          "HENKES_DATA_DIR not set -- using ephemeral filesystem. Bookings WILL be lost on every deploy/restart. Attach a Render Disk and set HENKES_DATA_DIR=/var/data/henkes.",
+      });
+    }
+  } catch (err) {
+    log.error("storage_not_writable", {
+      path: storage.DATA_DIR,
+      error: err.message,
+      hint: "Check Render Disk mount + permissions. Server will continue but bookings will fail.",
+    });
+  }
+
+  // 2. appointments.json Integritaets-Check + Auto-Recovery
+  const fileCheck = await storage.checkAppointmentsFile();
+  if (fileCheck.healthy) {
+    log.info("appointments_file_ok", {
+      exists: fileCheck.exists,
+      count: fileCheck.count,
+    });
+  } else {
+    log.error("appointments_file_corrupted", {
+      error: fileCheck.error,
+      code: fileCheck.code,
+      action: "attempting auto-recovery from latest valid backup",
+    });
+    const recovery = await storage.recoverFromBackup();
+    if (recovery.restored) {
+      log.warn("auto_recovery_success", {
+        from: recovery.from,
+        message:
+          "Server recovered from backup. Operator should investigate the original corruption.",
+      });
+    } else {
+      log.error("auto_recovery_failed", {
+        reason: recovery.reason,
+        action:
+          "Continuing with empty appointments list. Manual intervention required.",
+      });
+    }
+  }
+}
 
 /* ---------------- Graceful Shutdown ---------------- */
 
@@ -196,6 +261,9 @@ const server = app.listen(PORT, () => {
  */
 function gracefulShutdown(signal) {
   log.info("shutdown_requested", { signal });
+
+  // Backup-Scheduler stoppen, damit kein neuer Interval-Tick mehr feuert.
+  backup.stop();
 
   const forceTimer = setTimeout(() => {
     log.error("shutdown_forced", { reason: "timeout after 10s" });
