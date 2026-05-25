@@ -740,7 +740,7 @@ async function sendDailyDigestEmail(appointments, today) {
   const result = { sent: false, sentAt: null, error: null };
 
   try {
-    const { error } = await resend.emails.send({
+    const { error } = await sendWithRetry(resend,{
       from: config.from,
       to: config.salonEmail,
       subject: mail.subject,
@@ -892,7 +892,7 @@ async function sendAppointmentEmails(appointment, baseUrl) {
 
   // 1. Kunden-Eingangs-Mail (sofort)
   try {
-    const { error } = await resend.emails.send({
+    const { error } = await sendWithRetry(resend,{
       from: config.from,
       to: appointment.email,
       replyTo: config.replyTo,
@@ -910,7 +910,7 @@ async function sendAppointmentEmails(appointment, baseUrl) {
 
   // 2. Salon-Benachrichtigung (sofort)
   try {
-    const { error } = await resend.emails.send({
+    const { error } = await sendWithRetry(resend,{
       from: config.from,
       to: config.salonEmail,
       replyTo: appointment.email,
@@ -964,7 +964,7 @@ async function sendConfirmationEmail(appointment, baseUrl) {
   // 1. Bestaetigungs-Mail (mit ICS-Anhang -- ein Klick und der Termin
   //    steht im Kalender des Kunden, inkl. 2h-Vorab-Erinnerung)
   try {
-    const { error } = await resend.emails.send({
+    const { error } = await sendWithRetry(resend,{
       from: config.from,
       to: appointment.email,
       replyTo: config.replyTo,
@@ -988,7 +988,7 @@ async function sendConfirmationEmail(appointment, baseUrl) {
   } else {
     try {
       const reminderMail = buildReminderEmail(appointment, effectiveBaseUrl);
-      const { data, error } = await resend.emails.send({
+      const { data, error } = await sendWithRetry(resend,{
         from: config.from,
         to: appointment.email,
         replyTo: config.replyTo,
@@ -1026,7 +1026,7 @@ async function sendDeclineEmail(appointment, baseUrl) {
   const declineMail = buildDeclineEmail(appointment, effectiveBaseUrl);
 
   try {
-    const { error } = await resend.emails.send({
+    const { error } = await sendWithRetry(resend,{
       from: config.from,
       to: appointment.email,
       replyTo: config.replyTo,
@@ -1079,7 +1079,7 @@ async function sendAdminCancellationEmail(appointment, baseUrl) {
   // 2. Kunden informieren
   const mail = buildAdminCancellationEmail(appointment, effectiveBaseUrl);
   try {
-    const { error } = await resend.emails.send({
+    const { error } = await sendWithRetry(resend,{
       from: config.from,
       to: appointment.email,
       replyTo: config.replyTo,
@@ -1132,7 +1132,7 @@ async function sendCancellationEmail(appointment) {
   // 2. Salon informieren
   try {
     const mail = buildCancellationEmail(appointment);
-    const { error } = await resend.emails.send({
+    const { error } = await sendWithRetry(resend,{
       from: config.from,
       to: config.salonEmail,
       replyTo: appointment.email,
@@ -1149,6 +1149,46 @@ async function sendCancellationEmail(appointment) {
   }
 
   return result;
+}
+
+/**
+ * Erkennt transiente Fehler (Netzwerk, 5xx, Rate-Limit), bei denen
+ * ein Retry sinnvoll ist. 4xx-Fehler wie "invalid_from" oder
+ * "validation_error" sind permanent und werden NICHT geretryt.
+ */
+function isTransientMailError(error) {
+  const name = error?.name || "";
+  const message = String(error?.message || error || "");
+  const combined = `${name} ${message}`;
+  return /5\d\d|rate.?limit|too.many.requests|ECONNRESET|ETIMEDOUT|ENOTFOUND|ECONNREFUSED|fetch failed|network/i.test(
+    combined
+  );
+}
+
+/**
+ * Schickt eine Mail via Resend mit 1 automatischem Retry bei
+ * transienten Fehlern. Pause zwischen Versuchen 800ms (Resend-typische
+ * Rate-Limit-Reset-Zeit).
+ *
+ * Permanente Fehler (4xx wie ungueltige Empfaenger-Adresse) werden
+ * direkt durchgereicht -- Retry wuerde nur den selben Fehler nochmal
+ * produzieren.
+ */
+async function sendWithRetry(client, params) {
+  try {
+    const result = await client.emails.send(params);
+    if (result.error && isTransientMailError(result.error)) {
+      await new Promise((r) => setTimeout(r, 800));
+      return client.emails.send(params);
+    }
+    return result;
+  } catch (err) {
+    if (isTransientMailError(err)) {
+      await new Promise((r) => setTimeout(r, 800));
+      return client.emails.send(params);
+    }
+    throw err;
+  }
 }
 
 /**
