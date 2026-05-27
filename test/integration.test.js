@@ -105,9 +105,24 @@ function buildTestApp() {
     }
     res.status(404).type("html").send("<h1>404</h1>");
   });
+  // Spiegelt die Error-Middleware aus server.js -- inkl. der
+  // Body-Parser-Client-Error-Erkennung. Wenn diese Logik aus server.js
+  // mal divergiert, brauchen wir auch hier eine Anpassung.
   // eslint-disable-next-line no-unused-vars
   a.use((err, req, res, _next) => {
     if (res.headersSent) return;
+    const isClientError =
+      err?.status === 400 ||
+      err?.status === 413 ||
+      err?.type === "entity.parse.failed" ||
+      err?.type === "entity.too.large";
+    if (isClientError) {
+      const message =
+        err?.type === "entity.too.large"
+          ? "Anfrage zu gross. Bitte kuerzen Sie z.B. das Notizfeld."
+          : "Ungueltige Anfrage -- bitte pruefen Sie die Eingabe.";
+      return res.status(err.status || 400).json({ success: false, message });
+    }
     res.status(500).json({ success: false, message: "internal error" });
   });
   return a;
@@ -295,6 +310,36 @@ test("POST /api/appointments: honeypot -> 200 silent reject (kein appointment)",
     headers: { Authorization: basicAuth("testadmin", "testpass-very-long") },
   })).json.appointments.length;
   assert.equal(after, before, "Honeypot-Submission darf nicht gespeichert werden");
+});
+
+test("POST /api/appointments: malformed JSON body -> 400 (nicht 500)", async () => {
+  // Direkter HTTP-Call mit ungueltigem JSON -- Express' body-parser
+  // wirft entity.parse.failed und unsere Error-Middleware soll daraus
+  // einen freundlichen 400 machen, NICHT 500.
+  const r = await new Promise((resolve, reject) => {
+    const req = http.request(
+      {
+        hostname: "127.0.0.1",
+        port,
+        path: "/api/appointments",
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+      },
+      (res) => {
+        let body = "";
+        res.setEncoding("utf8");
+        res.on("data", (c) => (body += c));
+        res.on("end", () => resolve({ status: res.statusCode, body }));
+      }
+    );
+    req.on("error", reject);
+    req.write("{ this is not valid json");
+    req.end();
+  });
+  assert.equal(r.status, 400);
+  const json = JSON.parse(r.body);
+  assert.equal(json.success, false);
+  assert.match(json.message, /ungueltige|pruefen|eingabe/i);
 });
 
 test("POST /api/appointments: invalid email -> 400", async () => {

@@ -152,13 +152,28 @@ app.use((req, res) => {
 // strukturiert und antwortet generisch (nie Stack-Trace nach aussen).
 // Storno-Router hat seinen eigenen Error-Handler, der vorher feuert
 // (HTML-Antwort statt JSON).
+//
+// Statuscode-Logik:
+//   - Body-Parser-Fehler (invalid JSON, payload too large) haben
+//     err.status === 400/413 -- die respektieren wir und schicken
+//     eine freundlichere Nachricht statt 500.
+//   - Alles andere -> 500 (generisch, kein Stack-Leak nach aussen).
 // eslint-disable-next-line no-unused-vars
 app.use((err, req, res, _next) => {
-  log.error("unhandled_error", {
+  const isClientError =
+    err?.status === 400 ||
+    err?.status === 413 ||
+    err?.type === "entity.parse.failed" ||
+    err?.type === "entity.too.large";
+
+  const logLevel = isClientError ? "warn" : "error";
+  log[logLevel]("unhandled_error", {
     path: req.path,
     method: req.method,
     error: String(err?.message || err),
-    stack: err?.stack,
+    status: err?.status,
+    type: err?.type,
+    stack: isClientError ? undefined : err?.stack,
   });
 
   // Schon Antwort begonnen? Dann nicht doppelt schicken.
@@ -167,12 +182,19 @@ app.use((err, req, res, _next) => {
   }
 
   if (req.path.startsWith("/api/")) {
+    if (isClientError) {
+      const message =
+        err?.type === "entity.too.large"
+          ? "Anfrage zu gross. Bitte kuerzen Sie z.B. das Notizfeld."
+          : "Ungueltige Anfrage -- bitte pruefen Sie die Eingabe.";
+      return res.status(err.status || 400).json({ success: false, message });
+    }
     return res.status(500).json({
       success: false,
       message: "Ein interner Fehler ist aufgetreten. Bitte versuchen Sie es erneut.",
     });
   }
-  res.status(500).type("html").send(stornoViews.renderError());
+  res.status(isClientError ? err.status || 400 : 500).type("html").send(stornoViews.renderError());
 });
 
 /* ---------------- Server starten ---------------- */
