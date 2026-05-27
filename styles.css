@@ -786,6 +786,35 @@ h3 {
   font-size: 13px;
 }
 
+/*
+ * Live-Validation-Hint unter Datum / Uhrzeit. Default: leer + 0 Hoehe,
+ * damit das Layout nicht springt. Sobald JS Text reinschreibt, dehnt
+ * sich der Bereich aus.
+ *
+ *   .is-ok   = gruener Hint (z.B. "Geöffnet 9-18 Uhr")
+ *   .is-warn = roter Hint (z.B. "Salon geschlossen - bitte Di-Sa")
+ */
+.booking-form .field-hint {
+  display: block;
+  margin-top: 6px;
+  min-height: 0;
+  font-size: 13px;
+  font-weight: 400;
+  color: var(--ash, #77675c);
+  line-height: 1.4;
+  transition: color 0.2s ease;
+}
+.booking-form .field-hint:empty {
+  margin-top: 0;
+}
+.booking-form .field-hint.is-ok {
+  color: #2d5a3d;
+}
+.booking-form .field-hint.is-warn {
+  color: #7a2e2e;
+  font-weight: 500;
+}
+
 .booking-form-row {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));

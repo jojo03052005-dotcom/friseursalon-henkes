@@ -434,11 +434,19 @@
           <div class="booking-form-row">
             <label>
               Wunschdatum
-              <input type="date" name="date" required aria-required="true">
+              <input type="date" name="date" required aria-required="true" aria-describedby="date-hint">
+              <!--
+                Live-Hint unter dem Datum: zeigt Salon-Oeffnung fuer den
+                gewaehlten Wochentag, BEVOR der Kunde submitted.
+                Spart einen Submit-Fehler-Roundtrip wenn jemand
+                versehentlich Sonntag oder Montag waehlt.
+              -->
+              <small id="date-hint" class="field-hint" data-date-hint aria-live="polite"></small>
             </label>
             <label>
               Uhrzeit
-              <input type="time" name="time" min="08:00" max="18:00" step="900" required aria-required="true">
+              <input type="time" name="time" min="08:00" max="18:00" step="900" required aria-required="true" aria-describedby="time-hint">
+              <small id="time-hint" class="field-hint" data-time-hint aria-live="polite"></small>
             </label>
           </div>
           <label>

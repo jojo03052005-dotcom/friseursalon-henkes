@@ -166,15 +166,15 @@ function clearFormDraft() {
 
 /**
  * Berechnet live den aktuellen Oeffnungs-Status anhand der Salon-
- * Stunden. Mirror von SALON_HOURS aus lib/config.js -- wenn dort
- * geaendert, muss hier auch geaendert werden. Doku-Hinweis: einzige
- * bewusste Duplizierung im Codebase (Backend kann nicht ins Browser-JS
- * geladen werden ohne Build-Step, und Build-Step wollen wir nicht).
+ * Stunden. Default-Werte spiegeln lib/config.js -- werden aber, sobald
+ * /api/salon antwortet, durch die Server-Werte ueberschrieben (siehe
+ * `applySalonInfo`). Dadurch reichen Config-Aenderungen am Server,
+ * ohne dass das Frontend nachgepflegt werden muss.
  *
  * Bewusst lokale Zeit (Salon ist in DE, Kunde auch -- wer aus dem
  * Ausland bucht, dem ist die exakte "jetzt offen"-Anzeige egal).
  */
-const SALON_HOURS = {
+let SALON_HOURS = {
   // 0=So, 1=Mo => zu
   2: { open: 9 * 60, close: 18 * 60, label: "Di" },
   3: { open: 9 * 60, close: 18 * 60, label: "Mi" },
@@ -183,6 +183,10 @@ const SALON_HOURS = {
   6: { open: 8 * 60, close: 14 * 60, label: "Sa" },
 };
 const WEEKDAY_NAMES = ["Sonntag", "Montag", "Dienstag", "Mittwoch", "Donnerstag", "Freitag", "Samstag"];
+
+// Wird vom Server gesetzt (s. fetchSalonInfo). Default: leere Liste --
+// dann faellt die Service-Hint-Logik still in den No-Op.
+let SERVICE_DURATIONS = {};
 
 function formatTime(mins) {
   const h = Math.floor(mins / 60);
@@ -244,6 +248,174 @@ function renderOpeningStatus() {
 }
 
 renderOpeningStatus();
+
+/**
+ * Holt Salon-Stunden + Service-Dauer vom Server (additive Quelle-of-truth).
+ * Bei Fehler bleiben die Default-Werte stehen -- alles funktioniert weiter,
+ * nur ohne Live-Sync mit salon.config.json.
+ */
+async function fetchSalonInfo() {
+  try {
+    const response = await fetch(`${API_BASE}/api/salon`, {
+      headers: { Accept: "application/json" },
+    });
+    if (!response.ok) return;
+    const data = await response.json();
+    if (!data?.success) return;
+
+    // Hours uebernehmen (Server liefert "HH:MM"-Strings).
+    if (data.hours && typeof data.hours === "object") {
+      const next = {};
+      for (const [day, slot] of Object.entries(data.hours)) {
+        const open = parseHHMM(slot.open);
+        const close = parseHHMM(slot.close);
+        if (open !== null && close !== null && close > open) {
+          next[Number(day)] = { open, close, label: WEEKDAY_NAMES[Number(day)]?.slice(0, 2) || "" };
+        }
+      }
+      if (Object.keys(next).length > 0) {
+        SALON_HOURS = next;
+        renderOpeningStatus();
+        updateDateHint();
+      }
+    }
+
+    // Service-Dauern uebernehmen (fuer "ca. 45 Min"-Hint bei Auswahl).
+    if (Array.isArray(data.services)) {
+      const map = {};
+      for (const s of data.services) {
+        if (s.name && Number(s.durationMinutes) > 0) {
+          map[s.name] = Number(s.durationMinutes);
+        }
+      }
+      SERVICE_DURATIONS = map;
+      updateServiceHint();
+    }
+  } catch (_err) {
+    // Bewusst still: Defaults sind brauchbar, Buchung funktioniert weiter.
+  }
+}
+
+function parseHHMM(str) {
+  const m = /^(\d{1,2}):(\d{2})$/.exec(String(str || ""));
+  if (!m) return null;
+  return Number(m[1]) * 60 + Number(m[2]);
+}
+
+/**
+ * Live-Hint unter dem Datums-Feld: zeigt, ob der Salon am gewaehlten
+ * Wochentag offen ist (und wenn ja, wann). Spart einen Submit-Fehler-
+ * Roundtrip wenn der Kunde versehentlich Sonntag/Montag waehlt.
+ */
+const dateInput = bookingForm?.querySelector('input[name="date"]');
+const timeInput = bookingForm?.querySelector('input[name="time"]');
+const serviceSelect = bookingForm?.querySelector('select[name="service"]');
+const dateHintEl = bookingForm?.querySelector("[data-date-hint]");
+const timeHintEl = bookingForm?.querySelector("[data-time-hint]");
+
+function updateDateHint() {
+  if (!dateInput || !dateHintEl) return;
+  const value = dateInput.value;
+  if (!value) {
+    dateHintEl.textContent = "";
+    dateHintEl.classList.remove("is-ok", "is-warn");
+    return;
+  }
+  // YYYY-MM-DD -> Wochentag in Lokal-Zeit (T12:00 vermeidet TZ-Edge)
+  const d = new Date(`${value}T12:00:00`);
+  if (Number.isNaN(d.getTime())) {
+    dateHintEl.textContent = "";
+    dateHintEl.classList.remove("is-ok", "is-warn");
+    return;
+  }
+  const dow = d.getDay();
+  const slot = SALON_HOURS[dow];
+  const dayName = WEEKDAY_NAMES[dow];
+  if (!slot) {
+    dateHintEl.textContent = `${dayName} ist Ruhetag – bitte Di–Sa wählen.`;
+    dateHintEl.classList.remove("is-ok");
+    dateHintEl.classList.add("is-warn");
+    // Time-Hint zuruecksetzen, da Tag eh ungueltig.
+    if (timeHintEl) {
+      timeHintEl.textContent = "";
+      timeHintEl.classList.remove("is-ok", "is-warn");
+    }
+    return;
+  }
+  dateHintEl.textContent = `${dayName}: ${formatTime(slot.open)}–${formatTime(slot.close)} Uhr geöffnet.`;
+  dateHintEl.classList.remove("is-warn");
+  dateHintEl.classList.add("is-ok");
+  // Time-Input min/max dynamisch auf die Salon-Stunden setzen, damit
+  // der Browser-Picker nicht 03:00 vorschlaegt.
+  if (timeInput) {
+    timeInput.min = formatTime(slot.open);
+    timeInput.max = formatTime(slot.close);
+  }
+  updateTimeHint();
+}
+
+/**
+ * Time-Hint: prueft live ob die gewaehlte Uhrzeit ins Salon-Fenster
+ * passt. Faengt z.B. ein versehentliches "17:30 Färbung" am Samstag
+ * (Salon schliesst 14:00) ab.
+ */
+function updateTimeHint() {
+  if (!timeInput || !timeHintEl) return;
+  if (!dateInput?.value || !timeInput.value) {
+    timeHintEl.textContent = "";
+    timeHintEl.classList.remove("is-ok", "is-warn");
+    return;
+  }
+  const d = new Date(`${dateInput.value}T12:00:00`);
+  if (Number.isNaN(d.getTime())) return;
+  const slot = SALON_HOURS[d.getDay()];
+  if (!slot) return; // Date-Hint zeigt eh schon Warnung
+  const tMins = parseHHMM(timeInput.value);
+  if (tMins === null) return;
+  if (tMins < slot.open || tMins >= slot.close) {
+    timeHintEl.textContent = `Außerhalb der Öffnungszeiten (${formatTime(slot.open)}–${formatTime(slot.close)}).`;
+    timeHintEl.classList.remove("is-ok");
+    timeHintEl.classList.add("is-warn");
+  } else {
+    timeHintEl.textContent = "";
+    timeHintEl.classList.remove("is-ok", "is-warn");
+  }
+}
+
+/**
+ * Service-Hint: nach Service-Auswahl zeigen wir die Dauer ("ca. 90 Min")
+ * unter dem Time-Hint -- hilft Kunden bei Slot-Wahl.
+ */
+function updateServiceHint() {
+  if (!serviceSelect || !timeHintEl) return;
+  const service = serviceSelect.value;
+  // Nur anzeigen wenn Date+Time noch keine Warnung erzeugen.
+  if (timeHintEl.classList.contains("is-warn")) return;
+  if (!service || !SERVICE_DURATIONS[service]) {
+    if (!timeHintEl.classList.contains("is-warn")) {
+      timeHintEl.textContent = "";
+      timeHintEl.classList.remove("is-ok");
+    }
+    return;
+  }
+  timeHintEl.textContent = `Geplante Dauer: ca. ${SERVICE_DURATIONS[service]} Min.`;
+  timeHintEl.classList.remove("is-warn");
+  timeHintEl.classList.add("is-ok");
+}
+
+if (dateInput) {
+  dateInput.addEventListener("change", updateDateHint);
+  dateInput.addEventListener("input", updateDateHint);
+}
+if (timeInput) {
+  timeInput.addEventListener("change", updateTimeHint);
+  timeInput.addEventListener("input", updateTimeHint);
+}
+if (serviceSelect) {
+  serviceSelect.addEventListener("change", updateServiceHint);
+}
+
+fetchSalonInfo();
 
 // Sticky Mobile-CTA erst einblenden wenn der Kunde gescrollt hat
 // (sofort sichtbar bei Page-Load waere aufdringlich). Versteckt sich
