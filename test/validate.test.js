@@ -201,6 +201,35 @@ test("notes: trimmed, capped at 500 chars, no triple newlines", () => {
   assert.equal(normalizeNotes(null), "");
 });
 
+test("name: rejected when too long (>120 chars)", async () => {
+  const result = await validateAppointment(
+    makePayload({ name: "A".repeat(121) }),
+    { now: FIXED_NOW, readClosedDays: noClosedDays }
+  );
+  assert.equal(result.ok, false);
+  assert.match(result.errors[0], /zu lang/);
+});
+
+test("phone: rejected when too long (>40 chars)", async () => {
+  const result = await validateAppointment(
+    makePayload({ phone: "1".repeat(41) }),
+    { now: FIXED_NOW, readClosedDays: noClosedDays }
+  );
+  assert.equal(result.ok, false);
+  assert.match(result.errors[0], /zu lang/);
+});
+
+test("email: rejected when too long (>254 chars)", async () => {
+  // local-part + "@x.de" = 254+ insgesamt
+  const localPart = "a".repeat(250);
+  const result = await validateAppointment(
+    makePayload({ email: `${localPart}@x.de` }),
+    { now: FIXED_NOW, readClosedDays: noClosedDays }
+  );
+  assert.equal(result.ok, false);
+  assert.match(result.errors[0], /zu lang/);
+});
+
 test("multiple errors reported, first is user-facing", async () => {
   const broken = await validateAppointment(
     { name: "", phone: "", email: "", date: "", time: "", service: "" },
