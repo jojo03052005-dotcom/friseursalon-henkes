@@ -521,10 +521,34 @@ test("GET /api/cron/daily-digest mit korrektem secret -> entweder skipped (So/Mo
 /* ---------------- Storno-Flow ---------------- */
 
 test("GET /storno/:token: unbekannt -> 404 HTML", async () => {
-  const r = await request("GET", "/storno/nonexistent-token");
+  // UUID-formatiges, aber unbekanntes Token -> 404 (durchlaeuft den
+  // Format-Guard, schlaegt erst beim DB-Lookup fehl)
+  const r = await request("GET", "/storno/00000000-0000-0000-0000-000000000000");
   assert.equal(r.status, 404);
   assert.match(r.headers["content-type"] || "", /text\/html/);
   assert.match(r.body, /Termin nicht gefunden/);
+});
+
+test("GET /storno/:token: garbage token format -> 404 ohne DB-hit", async () => {
+  // Diese Tokens werden vom Format-Guard direkt mit 404 abgewiesen,
+  // OHNE einen Storage-Call zu verursachen. Wichtig fuer Scanner-Spam.
+  for (const garbage of [
+    "../../etc/passwd",
+    "<script>alert(1)</script>",
+    "abc",                                         // zu kurz
+    "x".repeat(200),                               // zu lang
+    "00000000-0000-0000-0000-00000000000g",        // ungueltiges Hex
+    "00000000_0000_0000_0000_000000000000",        // Unterstrich statt Bindestrich
+  ]) {
+    const r = await request("GET", `/storno/${encodeURIComponent(garbage)}`);
+    assert.equal(r.status, 404, `garbage="${garbage.slice(0, 40)}" sollte 404 geben`);
+    assert.match(r.body, /Termin nicht gefunden/);
+  }
+});
+
+test("POST /storno/:token: garbage token format -> 404", async () => {
+  const r = await request("POST", "/storno/not-a-uuid");
+  assert.equal(r.status, 404);
 });
 
 test("GET + POST /storno/:token: full happy path", async () => {

@@ -25,11 +25,29 @@ const router = express.Router();
 
 router.use(cancelLimiter);
 
+/**
+ * Wir vergeben Storno-Tokens via crypto.randomUUID() -- d.h. genau
+ * 36 Zeichen, Format 8-4-4-4-12 Hex mit Bindestrichen. Alles andere
+ * ist Spam / Scanner und kann ohne DB-Roundtrip mit 404 abgewiesen
+ * werden. Spart bei Scannern, die /storno/<random> hammern, jeden
+ * Treffer eine teure Datei- oder DB-Operation.
+ *
+ * Bewusst lax: case-insensitive (manche Mail-Clients lowercasen URLs).
+ */
+const UUID_V4_REGEX =
+  /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+function isLikelyValidToken(value) {
+  if (typeof value !== "string") return false;
+  if (value.length !== 36) return false;
+  return UUID_V4_REGEX.test(value);
+}
+
 router.get(
   "/:token",
   asyncHandler(async (req, res) => {
     const token = String(req.params.token || "");
-    if (!token) {
+    if (!isLikelyValidToken(token)) {
       return res.status(404).type("html").send(stornoViews.renderNotFound());
     }
 
@@ -50,7 +68,7 @@ router.post(
   "/:token",
   asyncHandler(async (req, res) => {
     const token = String(req.params.token || "");
-    if (!token) {
+    if (!isLikelyValidToken(token)) {
       return res.status(404).type("html").send(stornoViews.renderNotFound());
     }
 
