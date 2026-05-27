@@ -12,6 +12,7 @@ const alertEl = document.querySelector("[data-admin-alert]");
 const tbody = document.querySelector("[data-appointments-body]");
 const refreshBtn = document.querySelector("[data-refresh]");
 const filtersEl = document.querySelector("[data-admin-filters]");
+const searchEl = document.querySelector("[data-admin-search]");
 
 const API_BASE = window.HENKES_API_BASE || window.location.origin;
 const COLSPAN = 10;
@@ -20,6 +21,7 @@ const COLSPAN = 10;
 // `lastAppointments` wird bei jedem loadAppointments() neu gesetzt; die
 // Filter-Klicks rendern darauf, ohne neu zu fetchen.
 let currentFilter = "all";
+let currentSearch = "";
 let lastAppointments = [];
 
 const matchesFilter = (item) => {
@@ -29,6 +31,19 @@ const matchesFilter = (item) => {
   if (currentFilter === "confirmed") return workflow === "confirmed";
   if (currentFilter === "done") return workflow === "declined" || workflow === "cancelled";
   return true;
+};
+
+const matchesSearch = (item) => {
+  if (!currentSearch) return true;
+  const q = currentSearch.toLowerCase();
+  return (
+    String(item.name || "").toLowerCase().includes(q) ||
+    String(item.phone || "").toLowerCase().includes(q) ||
+    String(item.email || "").toLowerCase().includes(q) ||
+    String(item.service || "").toLowerCase().includes(q) ||
+    String(item.notes || "").toLowerCase().includes(q) ||
+    String(item.date || "").includes(q)
+  );
 };
 
 const formatDate = (isoDate) => {
@@ -230,7 +245,7 @@ const renderConflictBadge = (item) => {
 const renderRows = (appointments) => {
   lastAppointments = appointments;
 
-  const filtered = appointments.filter(matchesFilter);
+  const filtered = appointments.filter((a) => matchesFilter(a) && matchesSearch(a));
 
   if (appointments.length === 0) {
     tbody.innerHTML = `
@@ -427,6 +442,19 @@ filtersEl?.addEventListener("click", (event) => {
 
   renderRows(lastAppointments);
 });
+
+// Live-Suche mit Debounce, damit jeder Tastendruck nicht das ganze DOM
+// neu rendert.
+if (searchEl) {
+  let searchTimer = null;
+  searchEl.addEventListener("input", () => {
+    if (searchTimer) clearTimeout(searchTimer);
+    searchTimer = setTimeout(() => {
+      currentSearch = searchEl.value.trim();
+      renderRows(lastAppointments);
+    }, 150);
+  });
+}
 
 refreshBtn.addEventListener("click", loadAppointments);
 loadAppointments();
