@@ -28,6 +28,7 @@ process.env.CRON_SECRET = "test-cron-secret";
 process.env.HENKES_BOOKING_RATE_MAX = "10000";
 process.env.HENKES_CANCEL_RATE_MAX = "10000";
 process.env.HENKES_ADMIN_RATE_MAX = "10000";
+process.env.HENKES_CRON_RATE_MAX = "10000";
 // Resend nicht konfigurieren -- Mails landen im "not_configured"-Pfad.
 delete process.env.RESEND_API_KEY;
 delete process.env.SALON_EMAIL;

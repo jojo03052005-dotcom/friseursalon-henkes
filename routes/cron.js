@@ -14,6 +14,7 @@ const express = require("express");
 const { safeStringEqual } = require("../lib/auth");
 const { readAll } = require("../lib/storage");
 const { SALON_HOURS } = require("../lib/config");
+const { cronLimiter } = require("../lib/rate-limit");
 const { asyncHandler } = require("../lib/async-handler");
 const logger = require("../lib/logger").child("cron");
 
@@ -23,6 +24,10 @@ const {
 } = require("../services/emailService");
 
 const router = express.Router();
+
+// Rate-Limit als zweite Verteidigungslinie -- der Endpoint ist bereits
+// per CRON_SECRET geschuetzt, aber Defense-in-Depth schadet nicht.
+router.use(cronLimiter);
 
 router.get(
   "/daily-digest",
