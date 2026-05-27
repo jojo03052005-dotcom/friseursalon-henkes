@@ -78,7 +78,7 @@ function buildTestApp() {
       res.setHeader("Access-Control-Allow-Origin", origin);
     }
     res.setHeader("Vary", "Origin");
-    res.setHeader("Access-Control-Allow-Methods", "GET,POST,DELETE,OPTIONS");
+    res.setHeader("Access-Control-Allow-Methods", "GET,HEAD,POST,DELETE,OPTIONS");
     res.setHeader(
       "Access-Control-Allow-Headers",
       "Content-Type,Authorization,X-Idempotency-Key"
@@ -162,6 +162,13 @@ function basicAuth(user, pass) {
 }
 
 /* ---------------- Health / Services ---------------- */
+
+test("HEAD /api/health -> 200 empty (for uptime monitors)", async () => {
+  const r = await request("HEAD", "/api/health");
+  assert.equal(r.status, 200);
+  // HEAD darf keinen Body haben
+  assert.equal(r.body, "");
+});
 
 test("GET /api/health -> 200 with operational status", async () => {
   const r = await request("GET", "/api/health");

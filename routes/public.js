@@ -28,6 +28,14 @@ try {
   // ignore
 }
 
+// HEAD-Liveness: viele Uptime-Monitore (UptimeRobot, Better-Stack, Pingdom)
+// senden HEAD-Requests statt GET, um Bandbreite zu sparen. Express
+// liefert HEAD nicht automatisch fuer GET-Routes -- wir antworten
+// explizit mit 200 ohne Body. Schnell, kein Storage-Call.
+router.head("/health", (_req, res) => {
+  res.status(200).end();
+});
+
 router.get("/health", async (_req, res) => {
   const t0 = Date.now();
   const report = {
