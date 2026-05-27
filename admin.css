@@ -156,6 +156,17 @@
   border-color: var(--gold-dark);
 }
 
+/*
+ * Visueller Separator zwischen Status-Filtern und Zeitraum-Filtern.
+ * Nur Deko, kein Klick-Element (aria-hidden).
+ */
+.admin-filter-divider {
+  color: var(--muted, #77675c);
+  font-weight: 700;
+  padding: 0 4px;
+  user-select: none;
+}
+
 .admin-filter.is-active {
   color: var(--cream);
   background: var(--brown);

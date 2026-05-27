@@ -49,6 +49,14 @@
       <button type="button" class="admin-filter" data-filter="pending" role="tab" aria-selected="false">Ausstehend</button>
       <button type="button" class="admin-filter" data-filter="confirmed" role="tab" aria-selected="false">Bestätigt</button>
       <button type="button" class="admin-filter" data-filter="done" role="tab" aria-selected="false">Erledigt</button>
+      <!--
+        Sekundaere Filterzeile: Zeitraum. Unabhaengig vom Status-Filter
+        (kombiniert per AND). Default "Alle" zeigt egal welcher Tag.
+      -->
+      <span class="admin-filter-divider" aria-hidden="true">·</span>
+      <button type="button" class="admin-filter is-active" data-range="all" role="tab" aria-selected="true" title="Alle Termine, unabhaengig vom Datum">Zeitraum: Alle</button>
+      <button type="button" class="admin-filter" data-range="today" role="tab" aria-selected="false" title="Nur Termine fuer heute">Heute</button>
+      <button type="button" class="admin-filter" data-range="week" role="tab" aria-selected="false" title="Termine in den naechsten 7 Tagen ab heute">Diese Woche</button>
       <label class="admin-search-label" aria-label="Termine durchsuchen">
         <input
           type="search"

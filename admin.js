@@ -22,6 +22,7 @@ const COLSPAN = 10;
 // `lastAppointments` wird bei jedem loadAppointments() neu gesetzt; die
 // Filter-Klicks rendern darauf, ohne neu zu fetchen.
 let currentFilter = "all";
+let currentRange = "all";
 let currentSearch = "";
 let lastAppointments = [];
 
@@ -45,6 +46,27 @@ const matchesSearch = (item) => {
     String(item.notes || "").toLowerCase().includes(q) ||
     String(item.date || "").includes(q)
   );
+};
+
+/**
+ * Datumsbereich-Filter:
+ *   all   = unbeschraenkt
+ *   today = nur Termine mit date === heute
+ *   week  = Termine in [heute, heute+7 Tage]
+ * Vergleich auf String-Basis (YYYY-MM-DD ist lexikographisch sortierbar).
+ */
+const matchesRange = (item) => {
+  if (currentRange === "all") return true;
+  if (!item.date) return false;
+  const today = new Date().toISOString().slice(0, 10);
+  if (currentRange === "today") return item.date === today;
+  if (currentRange === "week") {
+    const in7Days = new Date();
+    in7Days.setDate(in7Days.getDate() + 7);
+    const end = in7Days.toISOString().slice(0, 10);
+    return item.date >= today && item.date <= end;
+  }
+  return true;
 };
 
 const formatDate = (isoDate) => {
@@ -246,7 +268,9 @@ const renderConflictBadge = (item) => {
 const renderRows = (appointments) => {
   lastAppointments = appointments;
 
-  const filtered = appointments.filter((a) => matchesFilter(a) && matchesSearch(a));
+  const filtered = appointments.filter(
+    (a) => matchesFilter(a) && matchesRange(a) && matchesSearch(a)
+  );
 
   if (appointments.length === 0) {
     tbody.innerHTML = `
@@ -478,21 +502,36 @@ tbody.addEventListener("click", (event) => {
 });
 
 // Filter-Buttons: setzen den Status und rendern aus dem Cache (kein neuer
-// Backend-Roundtrip noetig).
+// Backend-Roundtrip noetig). Zwei unabhaengige Gruppen: Status (data-filter)
+// und Zeitraum (data-range) -- beide kombinieren per AND in matches*.
 filtersEl?.addEventListener("click", (event) => {
-  const btn = event.target.closest("[data-filter]");
-  if (!btn) return;
-  const filter = btn.dataset.filter;
-  if (!filter || filter === currentFilter) return;
-
-  currentFilter = filter;
-  filtersEl.querySelectorAll("[data-filter]").forEach((b) => {
-    const isActive = b.dataset.filter === filter;
-    b.classList.toggle("is-active", isActive);
-    b.setAttribute("aria-selected", String(isActive));
-  });
-
-  renderRows(lastAppointments);
+  const filterBtn = event.target.closest("[data-filter]");
+  if (filterBtn) {
+    const filter = filterBtn.dataset.filter;
+    if (filter && filter !== currentFilter) {
+      currentFilter = filter;
+      filtersEl.querySelectorAll("[data-filter]").forEach((b) => {
+        const isActive = b.dataset.filter === filter;
+        b.classList.toggle("is-active", isActive);
+        b.setAttribute("aria-selected", String(isActive));
+      });
+      renderRows(lastAppointments);
+    }
+    return;
+  }
+  const rangeBtn = event.target.closest("[data-range]");
+  if (rangeBtn) {
+    const range = rangeBtn.dataset.range;
+    if (range && range !== currentRange) {
+      currentRange = range;
+      filtersEl.querySelectorAll("[data-range]").forEach((b) => {
+        const isActive = b.dataset.range === range;
+        b.classList.toggle("is-active", isActive);
+        b.setAttribute("aria-selected", String(isActive));
+      });
+      renderRows(lastAppointments);
+    }
+  }
 });
 
 // Live-Suche mit Debounce, damit jeder Tastendruck nicht das ganze DOM
