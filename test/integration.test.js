@@ -662,6 +662,24 @@ test("GET + POST /storno/:token: full happy path", async () => {
   assert.match(r3.body, /Schon storniert|bereits storniert/);
 });
 
+/* ---------------- Security-Header (helmet) ---------------- */
+
+test("Helmet liefert die wichtigsten Security-Header", async () => {
+  const r = await request("GET", "/api/health");
+  // Diese Header sind helmet-Defaults und sollten IMMER da sein.
+  // Falls einer wegfaellt (z.B. weil jemand helmet entfernt) -> rote Lampe.
+  assert.ok(r.headers["x-content-type-options"], "X-Content-Type-Options missing");
+  assert.equal(r.headers["x-content-type-options"], "nosniff");
+  assert.ok(r.headers["x-dns-prefetch-control"], "X-DNS-Prefetch-Control missing");
+  assert.ok(r.headers["referrer-policy"], "Referrer-Policy missing");
+  // Kein "X-Powered-By: Express" durchsickern lassen.
+  assert.equal(
+    r.headers["x-powered-by"],
+    undefined,
+    "X-Powered-By darf nicht ausgeliefert werden"
+  );
+});
+
 /* ---------------- CORS ---------------- */
 
 test("CORS: Production-Origin erlaubt", async () => {
