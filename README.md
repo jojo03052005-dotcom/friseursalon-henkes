@@ -157,21 +157,62 @@ Zeigt alle Terminanfragen mit Status:
 ## Projektstruktur
 
 ```
-server.js                # Express-API (Routes, Validation, Admin-Auth, Storno-HTML)
-services/emailService.js # Resend-Integration + Mail-Templates
-data/appointments.json   # JSON-Speicher (ephemer ohne Render Disk!)
-index.html               # Startseite + Buchungsformular
-script.js                # Frontend-Logik (Form-Submit, Reveal-Animationen)
-styles.css               # Salon-Design
-admin.html / .js / .css  # Admin-Panel
-render.yaml              # Render-Deploy-Config
-.env / .env.example      # Lokale Konfiguration (.env ist gitignored)
+server.js                  # App-Komposition (Middleware + Router-Mount + Shutdown)
+salon.config.json          # Salon-Daten (Name, Telefon, Stunden, Services) - 1 Datei pro Salon
+lib/                       # Geschaeftslogik (rein, ohne Express)
+  config.js                # zentrale Konstanten
+  db.js                    # Postgres-Layer (aktiv wenn DATABASE_URL gesetzt)
+  storage.js               # Engine-Switch (Postgres/JSON), gleiche API
+  migrate.js               # einmaliger JSON->DB Import beim Boot
+  backup.js                # File-Backup-Scheduler (im DB-Mode automatisch aus)
+  validate.js              # Buchungs-Validierung
+  auth.js                  # HTTP Basic Auth (timing-safe)
+  rate-limit.js            # Limits pro Endpoint
+  logger.js                # JSON-Lines in Production, lesbar in Dev
+  escape.js                # HTML/ICS-Escape
+  url.js                   # Base-URL-Ableitung
+  async-handler.js         # Promise/sync-Throw -> next(err)
+  startup-check.js         # Config-Warnings beim Boot
+  views/storno.js          # server-rendered HTML fuer Storno-Flow
+routes/                    # Express-Router pro Domain
+  public.js                # /api/health, /api/services, /api/salon
+  appointments.js          # POST/GET /api/appointments
+  admin.js                 # /api/admin/* (Auth + Aktionen + CSV)
+  cron.js                  # /api/cron/daily-digest
+  storno.js                # /storno/:token (GET + POST)
+services/emailService.js   # Resend-Integration + Mail-Templates
+test/                      # node:test (built-in, keine Test-Lib-Dependency)
+data/                      # nur Closed-Days getrackt; appointments.json gitignored
+index.html                 # Startseite + Buchungsformular
+script.js / styles.css     # Frontend-Logik + Design
+admin.html / .js / .css    # Admin-Panel (hinter Basic Auth)
+render.yaml                # Render-Deploy-Config
+.env / .env.example        # Lokale Konfiguration (.env ist gitignored)
 ```
+
+### Wichtigste API-Endpoints
+
+| Methode | Pfad | Zweck |
+|---------|------|-------|
+| `HEAD` / `GET` | `/api/health` | Liveness + Operational-Status (no-cache, fuer Uptime-Monitore) |
+| `GET` | `/api/services` | Service-Namen (5-Min-Cache) |
+| `GET` | `/api/salon` | Stunden, Service-Dauern, Salon-Meta (5-Min-Cache) |
+| `POST` | `/api/appointments` | Neue Buchung (Honeypot + Idempotency-Key + Dedupe) |
+| `GET` | `/api/appointments` | Admin: alle Termine *(Basic Auth)* |
+| `POST` | `/api/admin/appointments/:id/confirm\|decline\|cancel` | Status-Wechsel + Mail *(Basic Auth)* |
+| `DELETE` | `/api/admin/appointments/:id` | Permanent loeschen *(Basic Auth)* |
+| `GET` | `/api/admin/backup` | JSON-Export aller Termine *(Basic Auth)* |
+| `GET` | `/api/admin/backup.csv` | CSV-Export fuer Excel/Numbers *(Basic Auth)* |
+| `GET` | `/api/cron/daily-digest` | Tages-Uebersicht-Mail *(CRON_SECRET)* |
+| `GET` / `POST` | `/storno/:token` | Kunden-Storno-Flow (UUID-Token + Mail) |
 
 ## Bekannte Einschraenkungen / TODOs
 
-- [ ] **Persistenz**: JSON liegt auf Render-Filesystem -> Render Disk anbinden oder DB
+- [x] **Persistenz**: Postgres via Neon (kostenlos) implementiert -- siehe oben
+- [x] **Slot-Konflikt-Pruefung**: Markiert (nicht blockierend, da zwei Stylistinnen parallel arbeiten koennten)
+- [x] **Mobile Admin-UX**: Stacked Layout unter 760px, Live-Suche, Filter
+- [x] **Live-Buchungs-Hints**: Datum-/Zeit-Validation passiert im Browser BEVOR submit
+- [x] **Backup + Auto-Recovery**: File-Backups rotieren, korrupte JSON wird auto-repariert
 - [ ] **Eigene Domain bei Resend verifizieren** (sonst landen Mails im Spam)
-- [ ] **Impressum + Datenschutzerklaerung** (TMG/DSGVO-Pflicht in DE)
-- [ ] **Slot-Konflikt-Pruefung** (zwei Kunden koennen denselben Slot anfragen)
-- [ ] **Bessere Mobile-UX im Admin** (Tabelle scrollt horizontal)
+- [ ] **Impressum + Datenschutzerklaerung** (TMG/DSGVO-Pflicht in DE) -- Platzhalter eingebaut, Inhalte ergaenzen
+- [ ] **DATABASE_URL in Render setzen** (sonst weiter ephemerer Storage)
