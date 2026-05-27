@@ -6,7 +6,9 @@ E-Mails via [Resend](https://resend.com).
 - **Frontend:** Statische HTML/CSS/JS-Seite, deployed auf Netlify
 - **Backend:** Node/Express auf Render (Free Tier), API + Admin + Storno-Flow
 - **Mail:** Resend HTTP-API (sofort + 24h-Erinnerung + Storno-Benachrichtigung)
-- **Speicher:** `data/appointments.json` (achtung: Render-Disk noetig fuer Persistenz)
+- **Speicher:** zwei Modi automatisch erkannt:
+  - **Postgres** wenn `DATABASE_URL` gesetzt (empfohlen für Production, Neon kostenlos)
+  - **JSON-Datei** in `data/appointments.json` (Default für lokale Entwicklung + Tests)
 
 ## Schnellstart lokal
 
@@ -82,6 +84,40 @@ Siehe `.env.example` fuer den vollstaendigen Stand und Kommentare.
 [data/appointments.json]               <- JSON-Speicher, achtung ephemer
                                           ohne Render Disk!
 ```
+
+## Persistente Speicherung (Postgres via Neon)
+
+Render Free-Tier hat keinen persistenten Storage — `data/appointments.json` würde bei jedem Deploy/Auto-Restart verloren gehen. Lösung: kostenlose Postgres-DB bei [Neon](https://neon.tech).
+
+### Einmaliges Setup (5 Min)
+
+1. **Neon-Account** auf <https://neon.tech> anlegen (GitHub-Login geht)
+2. **New Project** erstellen:
+   - Name: `henkes-salon`
+   - Region: `Frankfurt (eu-central-1)` (nahe Render, niedrige Latenz)
+   - Postgres Version: Default (16+)
+3. Nach Projekt-Erstellung wird die **Connection String** angezeigt:
+   ```
+   postgresql://user:pass@ep-xxxxx.eu-central-1.aws.neon.tech/neondb?sslmode=require
+   ```
+   Kopieren.
+4. **In Render**: Dashboard → Service → Environment → `DATABASE_URL` setzen → Save Changes
+5. Render deployt automatisch. Beim Start:
+   - Schema wird automatisch angelegt (`appointments` + `settings` Tabellen)
+   - Falls eine alte `appointments.json` existiert, wird sie einmalig in die DB importiert
+6. **Verifizieren**: `https://...onrender.com/api/health` → `storage.engine: "postgres"`, `storage.writable: true`
+
+### Lokale Entwicklung
+
+Ohne `DATABASE_URL` läuft alles wie vorher (JSON-Datei in `data/`). Wer lokal gegen die echte Neon-DB testen will: `DATABASE_URL` in `.env` setzen. **NIEMALS Produktions-DB für Experimente — eigenes Neon-Branch nutzen** (Neon hat Postgres-Branches eingebaut, eine Zeile im Dashboard).
+
+### Migration
+
+Beim ersten Boot mit gesetztem `DATABASE_URL`:
+- Tabellen werden angelegt (idempotent — zweiter Boot macht nichts)
+- Wenn `data/appointments.json` existiert UND DB leer ist → einmaliger Import
+- Wenn DB schon Daten hat → nichts (Production-Safe)
+- Log-Events: `appointments_import`, `closed_days_import`
 
 ## Deployment
 
