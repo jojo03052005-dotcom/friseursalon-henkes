@@ -482,6 +482,82 @@ test("POST /api/admin/appointments/:id/confirm: idempotent + not-found", async (
   assert.equal(r3.status, 404);
 });
 
+test("POST /api/admin/appointments/:id/decline: marks declined", async () => {
+  const created = await request("POST", "/api/appointments", {
+    body: validBooking({ email: "decline-test@example.com", time: "13:15" }),
+  });
+  const id = created.json.appointment.id;
+
+  const r = await request("POST", `/api/admin/appointments/${id}/decline`, {
+    headers: { Authorization: basicAuth("testadmin", "testpass-very-long") },
+  });
+  // Mail nicht konfiguriert -> 502 (Termin steht, Mail fehlte). Ok.
+  assert.ok(r.status === 200 || r.status === 502);
+  assert.equal(r.json.appointment.declined, true);
+
+  // Confirm nach declined -> 409 (Status-Wechsel verboten)
+  const r2 = await request("POST", `/api/admin/appointments/${id}/confirm`, {
+    headers: { Authorization: basicAuth("testadmin", "testpass-very-long") },
+  });
+  assert.equal(r2.status, 409);
+});
+
+test("POST /api/admin/appointments/:id/cancel: confirmed -> cancelled", async () => {
+  const created = await request("POST", "/api/appointments", {
+    body: validBooking({ email: "admin-cancel@example.com", time: "13:30" }),
+  });
+  const id = created.json.appointment.id;
+
+  // Confirm zuerst
+  await request("POST", `/api/admin/appointments/${id}/confirm`, {
+    headers: { Authorization: basicAuth("testadmin", "testpass-very-long") },
+  });
+  // Dann cancel
+  const r = await request("POST", `/api/admin/appointments/${id}/cancel`, {
+    headers: { Authorization: basicAuth("testadmin", "testpass-very-long") },
+  });
+  assert.ok(r.status === 200 || r.status === 502);
+  assert.equal(r.json.appointment.cancelled, true);
+  assert.equal(r.json.appointment.cancelledByAdmin, true);
+});
+
+test("Admin-Aktionen ohne Auth -> 401", async () => {
+  for (const path of [
+    "/api/admin/appointments/some-id/confirm",
+    "/api/admin/appointments/some-id/decline",
+    "/api/admin/appointments/some-id/cancel",
+  ]) {
+    const r = await request("POST", path);
+    assert.equal(r.status, 401, `${path} ohne Auth muss 401 geben`);
+  }
+  const del = await request("DELETE", "/api/admin/appointments/some-id");
+  assert.equal(del.status, 401);
+});
+
+test("GET /api/admin/backup.csv: Inhalt enthaelt einen frisch angelegten Termin", async () => {
+  // Frischen Termin anlegen mit eindeutigem Marker im Notes-Feld
+  const marker = `CSV-MARKER-${Date.now()}`;
+  await request("POST", "/api/appointments", {
+    body: validBooking({
+      email: "csv-content@example.com",
+      time: "16:30",
+      notes: marker,
+    }),
+  });
+
+  const r = await request("GET", "/api/admin/backup.csv", {
+    headers: { Authorization: basicAuth("testadmin", "testpass-very-long") },
+  });
+  assert.equal(r.status, 200);
+  // CSV-Body sollte den Marker enthalten (in der Notizen-Spalte)
+  assert.ok(
+    r.body.includes(marker),
+    `CSV muss die frische Anfrage enthalten (Marker '${marker}' gesucht)`
+  );
+  // E-Mail-Adresse muss auch drin sein
+  assert.ok(r.body.includes("csv-content@example.com"));
+});
+
 test("DELETE /api/admin/appointments/:id: removes appointment", async () => {
   const created = await request("POST", "/api/appointments", {
     body: validBooking({ email: "delete-test@example.com", time: "16:00" }),
