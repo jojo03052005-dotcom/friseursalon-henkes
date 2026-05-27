@@ -378,6 +378,25 @@ test("GET /api/admin/backup mit Auth -> 200 mit Content-Disposition", async () =
   assert.ok(typeof data.count === "number");
 });
 
+test("GET /api/admin/backup.csv -> CSV mit BOM, Semikolon, Header", async () => {
+  const r = await request("GET", "/api/admin/backup.csv", {
+    headers: { Authorization: basicAuth("testadmin", "testpass-very-long") },
+  });
+  assert.equal(r.status, 200);
+  assert.match(r.headers["content-type"] || "", /text\/csv/);
+  assert.match(r.headers["content-disposition"] || "", /\.csv/);
+  // BOM am Anfang
+  assert.equal(r.body.charCodeAt(0), 0xFEFF);
+  // Header-Zeile enthaelt alle Spalten
+  const lines = r.body.replace(/^﻿/, "").split(/\r?\n/);
+  assert.match(lines[0], /ID;Erstellt;Datum;Uhrzeit;Name;Telefon;E-Mail;Leistung;Status;Notizen/);
+});
+
+test("GET /api/admin/backup.csv ohne Auth -> 401", async () => {
+  const r = await request("GET", "/api/admin/backup.csv");
+  assert.equal(r.status, 401);
+});
+
 test("POST /api/admin/appointments/:id/confirm: idempotent + not-found", async () => {
   // Setup: einen frischen Termin anlegen
   const created = await request("POST", "/api/appointments", {

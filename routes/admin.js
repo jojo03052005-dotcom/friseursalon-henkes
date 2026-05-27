@@ -59,6 +59,76 @@ router.get(
   })
 );
 
+/**
+ * CSV-Export -- fuer Operator die Excel/Numbers nutzen wollen statt JSON.
+ * UTF-8 BOM voran, damit Excel die Umlaute korrekt liest.
+ * Semikolon als Trennzeichen (deutsches Excel-Default).
+ */
+router.get(
+  "/backup.csv",
+  asyncHandler(async (_req, res) => {
+    const appointments = await readAll();
+    const filename = `henkes-termine-${new Date().toISOString().slice(0, 10)}.csv`;
+
+    const headers = [
+      "ID",
+      "Erstellt",
+      "Datum",
+      "Uhrzeit",
+      "Name",
+      "Telefon",
+      "E-Mail",
+      "Leistung",
+      "Status",
+      "Notizen",
+    ];
+
+    const escape = (val) => {
+      const s = String(val ?? "");
+      // CSV-Escape: bei ; " oder Newline -> in Anfuehrungszeichen,
+      // " im Inhalt verdoppeln.
+      if (/[;"\n\r]/.test(s)) return `"${s.replace(/"/g, '""')}"`;
+      return s;
+    };
+
+    const statusOf = (a) => {
+      if (a.cancelled) return "Storniert";
+      if (a.declined) return "Abgelehnt";
+      if (a.confirmed) return "Bestaetigt";
+      return "Ausstehend";
+    };
+
+    const lines = [headers.map(escape).join(";")];
+    appointments
+      .sort((a, b) => `${a.date}T${a.time}`.localeCompare(`${b.date}T${b.time}`))
+      .forEach((a) => {
+        lines.push(
+          [
+            a.id,
+            a.createdAt,
+            a.date,
+            a.time,
+            a.name,
+            a.phone,
+            a.email,
+            a.service,
+            statusOf(a),
+            (a.notes || "").replace(/\r?\n/g, " | "),
+          ]
+            .map(escape)
+            .join(";")
+        );
+      });
+
+    // BOM ﻿ damit Excel utf-8 erkennt
+    const csv = "﻿" + lines.join("\r\n") + "\r\n";
+
+    res.setHeader("Content-Type", "text/csv; charset=utf-8");
+    res.setHeader("Content-Disposition", `attachment; filename="${filename}"`);
+    res.send(csv);
+  })
+);
+
 /* ---------------- Confirm ---------------- */
 
 router.post(
