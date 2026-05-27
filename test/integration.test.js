@@ -186,6 +186,11 @@ test("HEAD /api/health -> 200 empty (for uptime monitors)", async () => {
   assert.equal(r.body, "");
 });
 
+test("GET /api/health hat no-store Cache-Control (Monitore brauchen frische Werte)", async () => {
+  const r = await request("GET", "/api/health");
+  assert.match(r.headers["cache-control"] || "", /no-store/);
+});
+
 test("GET /api/health -> 200 with operational status", async () => {
   const r = await request("GET", "/api/health");
   assert.equal(r.status, 200);

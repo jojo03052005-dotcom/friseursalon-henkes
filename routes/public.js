@@ -43,6 +43,12 @@ router.head("/health", (_req, res) => {
 });
 
 router.get("/health", async (_req, res) => {
+  // Health-Endpoint darf NIE zwischen-gecacht werden -- Monitore
+  // brauchen den aktuellen Stand, und ein 200-Cache koennte einen
+  // Ausfall maskieren.
+  res.set("Cache-Control", "no-store, no-cache, must-revalidate, max-age=0");
+  res.set("Pragma", "no-cache");
+
   const t0 = Date.now();
   const report = {
     success: true,
