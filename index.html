@@ -61,6 +61,38 @@
       "bestRating": "5",
       "worstRating": "1"
     },
+    "review": [
+      {
+        "@type": "Review",
+        "author": { "@type": "Person", "name": "Yvonne Jänsch" },
+        "reviewRating": { "@type": "Rating", "ratingValue": "5", "bestRating": "5" },
+        "reviewBody": "Super Kundenservice, tolle Haarschnitte und super nettes Team. Ich bin seit über 35 Jahren Kundin und bin immer sehr zufrieden."
+      },
+      {
+        "@type": "Review",
+        "author": { "@type": "Person", "name": "Nadine" },
+        "reviewRating": { "@type": "Rating", "ratingValue": "5", "bestRating": "5" },
+        "reviewBody": "Ein sehr sehr freundlicher angenehmer Friseursalon plus Qualität im Umgang mit diesem wunderbarem Handwerk. Absolute Empfehlung von mir."
+      },
+      {
+        "@type": "Review",
+        "author": { "@type": "Person", "name": "Frank Schweika" },
+        "reviewRating": { "@type": "Rating", "ratingValue": "5", "bestRating": "5" },
+        "reviewBody": "Der Friseursalon Henkes ist mein Stammfriseur seit inzwischen 42 Jahren. Das stets freundliche und zuvorkommende Team ist fachlich immer am Puls der Zeit."
+      },
+      {
+        "@type": "Review",
+        "author": { "@type": "Person", "name": "Petra Hansmann" },
+        "reviewRating": { "@type": "Rating", "ratingValue": "5", "bestRating": "5" },
+        "reviewBody": "Diesen Salon kann ich mit bestem Gewissen weiterempfehlen. Die Inhaberin und Friseurinnen sind immer gut gelaunt und es herrscht eine familiäre Atmosphäre."
+      },
+      {
+        "@type": "Review",
+        "author": { "@type": "Person", "name": "Antonia B" },
+        "reviewRating": { "@type": "Rating", "ratingValue": "5", "bestRating": "5" },
+        "reviewBody": "Freundliche Bedienung, meine Wünsche wurden perfekt umgesetzt. Komme immer wieder gerne und kann den Salon Henkes klar weiterempfehlen."
+      }
+    ],
     "openingHoursSpecification": [
       {
         "@type": "OpeningHoursSpecification",
@@ -129,6 +161,9 @@
         <div class="hero-actions">
           <a class="button primary" href="#termin">Termin vereinbaren</a>
           <a class="button ghost" href="tel:020941793">0209 41793 anrufen</a>
+          <a class="button ghost wa-cta" href="https://wa.me/4920941793?text=Hallo%2C%20ich%20m%C3%B6chte%20gern%20einen%20Termin%20anfragen." target="_blank" rel="noopener" aria-label="Termin per WhatsApp anfragen">
+            <span aria-hidden="true">✆</span> WhatsApp
+          </a>
         </div>
       </div>
 
@@ -140,9 +175,9 @@
             <p>71 Google Bewertungen</p>
           </div>
         </div>
-        <div class="hours-compact">
-          <strong>Heute geöffnet</strong>
-          <span>Typischer Salonbetrieb · schließt um 18:00 Uhr</span>
+        <div class="hours-compact" data-opening-status>
+          <strong>Öffnungszeiten</strong>
+          <span>Di–Fr 9–18 Uhr · Sa 8–14 Uhr</span>
         </div>
       </aside>
     </section>
@@ -190,27 +225,27 @@
 
       <div class="service-grid">
         <article class="service-card reveal">
-          <span class="service-icon">✂</span>
+          <span class="service-icon" aria-hidden="true">✂</span>
           <h3>Haarschnitt</h3>
           <p>Präzise Damen-, Herren- und Alltagsschnitte mit typgerechter Beratung.</p>
         </article>
         <article class="service-card reveal">
-          <span class="service-icon">●</span>
+          <span class="service-icon" aria-hidden="true">●</span>
           <h3>Färbung</h3>
           <p>Ansatzfarbe, komplette Farbveränderung und frische Nuancen mit schönem Glanz.</p>
         </article>
         <article class="service-card reveal">
-          <span class="service-icon">◐</span>
+          <span class="service-icon" aria-hidden="true">◐</span>
           <h3>Strähnen</h3>
           <p>Natürliche Highlights und lebendige Farbspiele passend zu Hautton und Stil.</p>
         </article>
         <article class="service-card reveal">
-          <span class="service-icon">◆</span>
+          <span class="service-icon" aria-hidden="true">◆</span>
           <h3>Styling</h3>
           <p>Föhnfrisuren, Finish und Styling für Alltag, Anlass oder besonderen Auftritt.</p>
         </article>
         <article class="service-card reveal">
-          <span class="service-icon">✦</span>
+          <span class="service-icon" aria-hidden="true">✦</span>
           <h3>Haarpflege</h3>
           <p>Aufbauende Pflege für strapaziertes, coloriertes oder trockenes Haar.</p>
         </article>
@@ -440,7 +475,7 @@
             45883 Gelsenkirchen
           </a>
           <a href="tel:020941793">0209 41793</a>
-          <span>Schließt um 18:00 Uhr</span>
+          <span data-contact-status>Öffnungszeiten siehe oben</span>
         </div>
         <div class="map-frame" aria-label="Google Maps Karte Friseursalon Henkes">
           <iframe
@@ -452,6 +487,15 @@
       </div>
     </section>
   </main>
+
+  <!--
+    Mobile-Only sticky CTA: erscheint nach Scrollen am unteren Rand,
+    damit der Termin-Button immer einen Daumen-Tap entfernt ist.
+    Auf Desktop versteckt (CSS).
+  -->
+  <a class="mobile-cta" href="#termin" data-mobile-cta aria-label="Termin anfragen">
+    Termin anfragen
+  </a>
 
   <footer class="site-footer">
     <div>

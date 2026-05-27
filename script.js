@@ -9,30 +9,46 @@ const submitBtn = document.querySelector("[data-submit-btn]");
 const API_BASE = window.HENKES_API_BASE || window.location.origin;
 
 /**
- * Render-Free-Tier schlaeft nach 15 Min ohne Traffic. Beim ersten Klick auf
- * "Anfrage senden" wuerde der Kunde sonst 30-60 Sek warten.
+ * Render-Free-Tier schlaeft nach 15 Min ohne Traffic. Beim ersten Klick
+ * auf "Anfrage senden" wuerde der Kunde sonst 30-60 Sek warten.
  *
- * Trick: sobald der Kunde die Seite oeffnet, schicken wir im Hintergrund
- * (best-effort, keine Fehler-Anzeige) einen Ping auf /api/health -- das
- * weckt den Server. Bis der Kunde das Formular ausgefuellt hat, ist der
- * Server warm und der Submit ist sofort durch. Reine UX-Verbesserung,
- * kostet nichts wenn der Server eh schon laeuft.
+ * Strategie:
+ *   1. 800ms nach Page-Load: Pre-Warm-Ping auf /api/health (best-effort)
+ *   2. Wenn der erste Ping fehlschlaegt: nach 3s nochmal, dann nach 8s
+ *      (in dieser Zeit wacht Render auf -- typisch 30-60s, aber sobald
+ *      EIN Ping durchgekommen ist, ist der Server bis zur naechsten
+ *      15-Min-Idle-Phase wach).
  *
- * Wir warten 800ms bis der erste Render gerendert ist, um nicht mit
- * Font-/Image-Loads zu konkurrieren.
+ * Wir geben nach 3 Versuchen auf. Das spaetere Submit-Handling hat
+ * seine eigene Retry-Logik fuer den Kunden-Fall.
  */
-window.setTimeout(() => {
-  fetch(`${API_BASE}/api/health`, {
-    method: "GET",
-    cache: "no-store",
-    // keepalive: damit der Request ueberlebt, falls der User direkt zur
-    // naechsten Seite scrollt/wechselt
-    keepalive: true,
-  }).catch(() => {
-    // Bewusst still -- wenn das Wake-up fehlschlaegt, ist das egal.
-    // Der spaetere Submit triggert das normale Cold-Start-UX.
-  });
-}, 800);
+function preWarmBackend(attempt = 0) {
+  const maxAttempts = 3;
+  const delays = [800, 3000, 8000]; // ms
+
+  window.setTimeout(() => {
+    fetch(`${API_BASE}/api/health`, {
+      method: "GET",
+      cache: "no-store",
+      keepalive: true,
+    })
+      .then((res) => {
+        if (!res.ok && attempt + 1 < maxAttempts) {
+          preWarmBackend(attempt + 1);
+        }
+        // Bei OK: nichts tun. Bei letztem Versuch + nicht-ok: still
+        // resignieren, Submit-Handler uebernimmt.
+      })
+      .catch(() => {
+        if (attempt + 1 < maxAttempts) {
+          preWarmBackend(attempt + 1);
+        }
+        // Bewusst still: Submit-Handler zeigt eh den Cold-Start-Hint.
+      });
+  }, delays[attempt] || 8000);
+}
+
+preWarmBackend();
 
 const updateHeader = () => {
   header.classList.toggle("is-scrolled", window.scrollY > 24);
@@ -82,6 +98,188 @@ const setMinBookingDate = () => {
 };
 
 setMinBookingDate();
+
+/**
+ * Speichert das halb-ausgefuellte Formular in localStorage und stellt
+ * es beim naechsten Besuch wieder her. Schuetzt Kunden mit wackeliger
+ * Verbindung -- wenn der Submit fehlschlaegt und sie die Seite neu
+ * laden, sind ihre Eingaben noch da.
+ *
+ * Wird bei erfolgreicher Buchung wieder geleert.
+ *
+ * Keine PII-Bedenken: Daten liegen NUR im Browser des Kunden selbst,
+ * werden nirgendwo hingesendet.
+ */
+const FORM_STORAGE_KEY = "henkes-booking-draft-v1";
+const FORM_STORAGE_FIELDS = ["name", "phone", "email", "date", "time", "service", "notes"];
+
+function saveFormDraft() {
+  if (!bookingForm) return;
+  try {
+    const draft = {};
+    for (const field of FORM_STORAGE_FIELDS) {
+      const el = bookingForm.elements[field];
+      if (el && el.value) draft[field] = el.value;
+    }
+    if (Object.keys(draft).length === 0) {
+      window.localStorage.removeItem(FORM_STORAGE_KEY);
+      return;
+    }
+    draft._savedAt = new Date().toISOString();
+    window.localStorage.setItem(FORM_STORAGE_KEY, JSON.stringify(draft));
+  } catch (_err) {
+    // localStorage voll oder disabled -> still ignorieren
+  }
+}
+
+function restoreFormDraft() {
+  if (!bookingForm) return;
+  try {
+    const raw = window.localStorage.getItem(FORM_STORAGE_KEY);
+    if (!raw) return;
+    const draft = JSON.parse(raw);
+    // Drafts aelter als 7 Tage verwerfen (uralte Wunschtermine
+    // koennten in der Vergangenheit liegen).
+    if (draft._savedAt) {
+      const ageMs = Date.now() - new Date(draft._savedAt).getTime();
+      if (ageMs > 7 * 24 * 60 * 60 * 1000) {
+        window.localStorage.removeItem(FORM_STORAGE_KEY);
+        return;
+      }
+    }
+    for (const field of FORM_STORAGE_FIELDS) {
+      const el = bookingForm.elements[field];
+      if (el && draft[field]) el.value = draft[field];
+    }
+  } catch (_err) {
+    // ignore
+  }
+}
+
+function clearFormDraft() {
+  try {
+    window.localStorage.removeItem(FORM_STORAGE_KEY);
+  } catch (_err) {
+    // ignore
+  }
+}
+
+/**
+ * Berechnet live den aktuellen Oeffnungs-Status anhand der Salon-
+ * Stunden. Mirror von SALON_HOURS aus lib/config.js -- wenn dort
+ * geaendert, muss hier auch geaendert werden. Doku-Hinweis: einzige
+ * bewusste Duplizierung im Codebase (Backend kann nicht ins Browser-JS
+ * geladen werden ohne Build-Step, und Build-Step wollen wir nicht).
+ *
+ * Bewusst lokale Zeit (Salon ist in DE, Kunde auch -- wer aus dem
+ * Ausland bucht, dem ist die exakte "jetzt offen"-Anzeige egal).
+ */
+const SALON_HOURS = {
+  // 0=So, 1=Mo => zu
+  2: { open: 9 * 60, close: 18 * 60, label: "Di" },
+  3: { open: 9 * 60, close: 18 * 60, label: "Mi" },
+  4: { open: 9 * 60, close: 18 * 60, label: "Do" },
+  5: { open: 9 * 60, close: 18 * 60, label: "Fr" },
+  6: { open: 8 * 60, close: 14 * 60, label: "Sa" },
+};
+const WEEKDAY_NAMES = ["Sonntag", "Montag", "Dienstag", "Mittwoch", "Donnerstag", "Freitag", "Samstag"];
+
+function formatTime(mins) {
+  const h = Math.floor(mins / 60);
+  return `${h}:${String(mins % 60).padStart(2, "0")}`;
+}
+
+function computeOpeningStatus(now = new Date()) {
+  const dow = now.getDay();
+  const nowMins = now.getHours() * 60 + now.getMinutes();
+  const today = SALON_HOURS[dow];
+
+  if (today && nowMins >= today.open && nowMins < today.close) {
+    return {
+      open: true,
+      label: "Jetzt geöffnet",
+      detail: `Schließt um ${formatTime(today.close)} Uhr`,
+    };
+  }
+  if (today && nowMins < today.open) {
+    return {
+      open: false,
+      label: "Heute geschlossen",
+      detail: `Öffnet um ${formatTime(today.open)} Uhr`,
+    };
+  }
+  // Heute schon zu oder Salon hat heute ganz zu. Naechsten Oeffnungstag suchen.
+  for (let offset = 1; offset <= 7; offset++) {
+    const nextDow = (dow + offset) % 7;
+    const nextHours = SALON_HOURS[nextDow];
+    if (nextHours) {
+      const dayLabel = offset === 1 ? "morgen" : WEEKDAY_NAMES[nextDow];
+      return {
+        open: false,
+        label: "Heute geschlossen",
+        detail: `Öffnet ${dayLabel} um ${formatTime(nextHours.open)} Uhr`,
+      };
+    }
+  }
+  return { open: false, label: "Geschlossen", detail: "" };
+}
+
+function renderOpeningStatus() {
+  const status = computeOpeningStatus();
+  const widget = document.querySelector("[data-opening-status]");
+  if (widget) {
+    const strong = widget.querySelector("strong");
+    const span = widget.querySelector("span");
+    if (strong) strong.textContent = status.label;
+    if (span) span.textContent = status.detail || "Di–Fr 9–18 · Sa 8–14";
+    widget.classList.toggle("is-open", status.open);
+    widget.classList.toggle("is-closed", !status.open);
+  }
+  const contact = document.querySelector("[data-contact-status]");
+  if (contact) {
+    contact.textContent = status.open
+      ? `Jetzt geöffnet · ${status.detail}`
+      : status.detail;
+  }
+}
+
+renderOpeningStatus();
+
+// Sticky Mobile-CTA erst einblenden wenn der Kunde gescrollt hat
+// (sofort sichtbar bei Page-Load waere aufdringlich). Versteckt sich
+// wieder, wenn der Buchungs-Bereich sichtbar ist (dort gibt's eh den
+// Submit-Button).
+const mobileCta = document.querySelector("[data-mobile-cta]");
+const bookingSection = document.querySelector("#termin");
+if (mobileCta && bookingSection && "IntersectionObserver" in window) {
+  let scrolled = false;
+  window.addEventListener("scroll", () => {
+    if (!scrolled && window.scrollY > 600) {
+      scrolled = true;
+      mobileCta.classList.add("is-visible");
+    }
+  }, { passive: true });
+
+  // Wenn der Termin-Bereich im Viewport ist -> CTA verstecken.
+  const bookingObserver = new IntersectionObserver((entries) => {
+    entries.forEach((entry) => {
+      mobileCta.classList.toggle("is-visible", !entry.isIntersecting && scrolled);
+    });
+  }, { threshold: 0.1 });
+  bookingObserver.observe(bookingSection);
+}
+// Status alle 60s aktualisieren -- relevant fuer Kunden, die die Seite
+// lange offen lassen und ueber die Schliessungszeit hinwegrutschen.
+setInterval(renderOpeningStatus, 60 * 1000);
+
+restoreFormDraft();
+if (bookingForm) {
+  let saveTimer = null;
+  bookingForm.addEventListener("input", () => {
+    if (saveTimer) clearTimeout(saveTimer);
+    saveTimer = setTimeout(saveFormDraft, 500);
+  });
+}
 
 /**
  * Holt die aktuelle Service-Liste vom Backend und ersetzt die Optionen im
@@ -164,6 +362,47 @@ const readJsonResponse = async (response) => {
  */
 let isSubmitting = false;
 
+/**
+ * Sendet das Buchungs-Payload mit AbortController-Timeout.
+ * Bei Network-Fehler (kein Response) wird vom Aufrufer ein Retry
+ * versucht -- haeufige Ursache ist Render-Cold-Start, der nach
+ * 30-60s bereit ist.
+ */
+/**
+ * Generiert einen Idempotency-Key. randomUUID gibt's in allen modernen
+ * Browsern; Fallback fuer alte: Math.random-Hash. Ein Key wird PRO
+ * Submit-Zyklus generiert -- nicht pro Versuch -- damit Retries
+ * idempotent zur Server-Sicht sind.
+ */
+function makeIdempotencyKey() {
+  if (window.crypto?.randomUUID) return window.crypto.randomUUID();
+  return (
+    "k-" +
+    Date.now().toString(36) +
+    "-" +
+    Math.random().toString(36).slice(2, 12)
+  );
+}
+
+async function submitBooking(payload, timeoutMs, idempotencyKey) {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), timeoutMs);
+  try {
+    const response = await fetch(`${API_BASE}/api/appointments`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "X-Idempotency-Key": idempotencyKey,
+      },
+      body: JSON.stringify(payload),
+      signal: controller.signal,
+    });
+    return response;
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
 bookingForm.addEventListener("submit", async (event) => {
   event.preventDefault();
   if (isSubmitting) return;
@@ -178,16 +417,16 @@ bookingForm.addEventListener("submit", async (event) => {
     time: formData.get("time")?.toString().trim() ?? "",
     service: formData.get("service")?.toString().trim() ?? "",
     notes: formData.get("notes")?.toString().trim() ?? "",
+    // Honeypot
+    website: formData.get("website")?.toString() ?? "",
   };
 
   showFormFeedback("loading", "Ihre Anfrage wird gesendet …");
   bookingForm.classList.add("is-submitting");
   submitBtn.disabled = true;
 
-  // Render-Free-Tier schlaeft nach 15 Min ohne Traffic. Beim ersten Klick
-  // dauert das Aufwecken 30-60 Sekunden, in denen das Formular einfach
-  // "lädt" -- Kunde denkt's haengt. Nach 5s zeigen wir einen Hinweis, nach
-  // 15s einen noch ausfuehrlicheren, damit klar ist: nicht kaputt, nur lahm.
+  // Render-Free-Tier-Cold-Start: 30-60s Wake-up. Wir zeigen progressive
+  // Hinweise statt einem statischen "lädt"-Spinner.
   const slowHintTimer = setTimeout(() => {
     showFormFeedback(
       "loading",
@@ -197,50 +436,92 @@ bookingForm.addEventListener("submit", async (event) => {
   const verySlowHintTimer = setTimeout(() => {
     showFormFeedback(
       "loading",
-      "Server startet noch … bitte gleich nicht doppelt klicken, das kann bis zu einer Minute dauern."
+      "Server startet noch … bitte nicht doppelt klicken, das kann bis zu einer Minute dauern."
     );
   }, 15000);
 
-  try {
-    const response = await fetch(`${API_BASE}/api/appointments`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(payload),
-    });
+  // Retry-Strategie: max 2 Versuche, 90s Timeout pro Versuch (gibt
+  // Render-Cold-Start genug Zeit), zwischen Versuchen 2s Pause.
+  const MAX_ATTEMPTS = 2;
+  const PER_ATTEMPT_TIMEOUT_MS = 90 * 1000;
 
-    clearTimeout(slowHintTimer);
-    clearTimeout(verySlowHintTimer);
+  // Ein Key fuer den gesamten Submit-Zyklus -- der Server erkennt
+  // damit Retry-Duplikate auch wenn die Payload sich minimal aendert.
+  const idempotencyKey = makeIdempotencyKey();
 
-    const result = await readJsonResponse(response);
+  let lastError = null;
+  let success = false;
 
-    if (!response.ok || !result.success) {
-      throw new Error(result.message || "Die Buchung konnte nicht gespeichert werden.");
+  for (let attempt = 1; attempt <= MAX_ATTEMPTS; attempt++) {
+    try {
+      const response = await submitBooking(
+        payload,
+        PER_ATTEMPT_TIMEOUT_MS,
+        idempotencyKey
+      );
+      clearTimeout(slowHintTimer);
+      clearTimeout(verySlowHintTimer);
+
+      const result = await readJsonResponse(response);
+
+      if (!response.ok || !result.success) {
+        // 4xx-Fehler (Validation, etc.) sollen NICHT geretryt werden --
+        // ist ein Kunden-Fehler, kein Cold-Start-Problem.
+        throw new Error(
+          result.message || "Die Buchung konnte nicht gespeichert werden."
+        );
+      }
+
+      showFormFeedback(
+        "success",
+        result.message ||
+          "Ihre Terminanfrage wurde erfolgreich gesendet. Sie erhalten in Kürze eine Bestätigungs-E-Mail."
+      );
+
+      bookingForm.reset();
+      setMinBookingDate();
+      clearFormDraft();
+      success = true;
+      break;
+    } catch (error) {
+      lastError = error;
+      const isNetworkOrTimeout =
+        error.name === "AbortError" ||
+        error.name === "TypeError" ||
+        error.message === "Failed to fetch";
+
+      if (!isNetworkOrTimeout || attempt === MAX_ATTEMPTS) {
+        // Validation-Fehler oder letzter Versuch: nicht mehr retryen.
+        break;
+      }
+
+      // Cold-Start-Retry: kurzer Hinweis, 2s warten, dann nochmal.
+      showFormFeedback(
+        "loading",
+        "Erster Versuch hat nicht geklappt – wir versuchen es nochmal …"
+      );
+      await new Promise((r) => setTimeout(r, 2000));
     }
+  }
 
-    showFormFeedback(
-      "success",
-      result.message ||
-        "Ihre Terminanfrage wurde erfolgreich gesendet. Sie erhalten in Kürze eine Bestätigungs-E-Mail."
-    );
+  clearTimeout(slowHintTimer);
+  clearTimeout(verySlowHintTimer);
 
-    bookingForm.reset();
-    setMinBookingDate();
-  } catch (error) {
+  if (!success && lastError) {
     const isNetwork =
-      error.message === "Failed to fetch" ||
-      error.name === "TypeError";
+      lastError.name === "AbortError" ||
+      lastError.name === "TypeError" ||
+      lastError.message === "Failed to fetch";
 
     showFormFeedback(
       "error",
       isNetwork
         ? "Verbindung zum Server fehlgeschlagen. Bitte einen Moment warten und es nochmal versuchen – oder kurz anrufen: 0209 41793."
-        : error.message
+        : lastError.message
     );
-  } finally {
-    clearTimeout(slowHintTimer);
-    clearTimeout(verySlowHintTimer);
-    bookingForm.classList.remove("is-submitting");
-    submitBtn.disabled = false;
-    isSubmitting = false;
   }
+
+  bookingForm.classList.remove("is-submitting");
+  submitBtn.disabled = false;
+  isSubmitting = false;
 });

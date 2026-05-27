@@ -25,13 +25,12 @@
 
 const { Resend } = require("resend");
 
-const SALON = {
-  name: "Friseursalon Henkes",
-  phone: "0209 41793",
-  phoneTel: "020941793",
-  address: "Fürstinnenstraße 40",
-  city: "45883 Gelsenkirchen",
-};
+const {
+  SALON,
+  SERVICE_DURATIONS_MINUTES,
+  DEFAULT_SERVICE_DURATION_MINUTES,
+} = require("../lib/config");
+const { escapeHtml, escapeIcs } = require("../lib/escape");
 
 const DEFAULT_FROM = `${SALON.name} <onboarding@resend.dev>`;
 
@@ -69,14 +68,6 @@ function formatGermanDate(isoDate) {
     month: "long",
     year: "numeric",
   });
-}
-
-function escapeHtml(value) {
-  return String(value ?? "")
-    .replace(/&/g, "&amp;")
-    .replace(/</g, "&lt;")
-    .replace(/>/g, "&gt;")
-    .replace(/"/g, "&quot;");
 }
 
 function buildCancelUrl(baseUrl, token) {
@@ -119,21 +110,6 @@ function germanLocalToISOString(dateStr, timeStr) {
 }
 
 /**
- * Default-Dauern pro Leistung, in Minuten. Wird fuer den ICS-Kalender-
- * Eintrag benoetigt (sonst weiss die Kalender-App nicht, wie lang der
- * Block belegt sein soll). Werte sind grosszuegig geschaetzt; der Salon
- * kann das beim Termin anpassen.
- */
-const SERVICE_DURATIONS_MINUTES = {
-  Haarschnitt: 45,
-  Färbung: 90,
-  Strähnen: 120,
-  Styling: 60,
-  Haarpflege: 45,
-};
-const DEFAULT_DURATION_MINUTES = 60;
-
-/**
  * Formatiert ein Date als UTC fuer das ICS-Format (YYYYMMDDTHHMMSSZ).
  */
 function toICSUtc(date) {
@@ -150,19 +126,16 @@ function buildICSAttachment(appointment) {
 
   const start = new Date(startIso);
   const durationMin =
-    SERVICE_DURATIONS_MINUTES[appointment.service] || DEFAULT_DURATION_MINUTES;
+    SERVICE_DURATIONS_MINUTES[appointment.service] || DEFAULT_SERVICE_DURATION_MINUTES;
   const end = new Date(start.getTime() + durationMin * 60 * 1000);
   const now = new Date();
 
-  // Description: ICS verlangt CRLF und escapete Sonderzeichen
-  // (Komma, Backslash, Semikolon, Newline).
-  const escapeICS = (s) =>
-    String(s ?? "")
-      .replace(/\\/g, "\\\\")
-      .replace(/;/g, "\\;")
-      .replace(/,/g, "\\,")
-      .replace(/\n/g, "\\n");
-
+  // Description: jede Zeile EINZELN escapen (Komma, Semikolon, Backslash,
+  // Newline werden ICS-konform mit Backslash escapet), DANN mit dem ICS-
+  // Zeilen-Separator "\n" (literal backslash-n) joinen. Wuerden wir die
+  // Werte unescapet zusammenkleben, koennten Kommas im Adresse-Feld oder
+  // Sonderzeichen in Kundennotizen den ganzen DESCRIPTION-Block zerlegen --
+  // einige Kalender-Apps ignorieren den Termin dann komplett.
   const description = [
     `Leistung: ${appointment.service}`,
     `Salon: ${SALON.name}`,
@@ -171,6 +144,7 @@ function buildICSAttachment(appointment) {
     appointment.notes ? `Ihre Notiz: ${appointment.notes}` : null,
   ]
     .filter(Boolean)
+    .map(escapeIcs)
     .join("\\n");
 
   const lines = [
@@ -184,14 +158,14 @@ function buildICSAttachment(appointment) {
     `DTSTAMP:${toICSUtc(now)}`,
     `DTSTART:${toICSUtc(start)}`,
     `DTEND:${toICSUtc(end)}`,
-    `SUMMARY:${escapeICS(`Friseur-Termin: ${appointment.service}`)}`,
-    `LOCATION:${escapeICS(`${SALON.address}, ${SALON.city}`)}`,
+    `SUMMARY:${escapeIcs(`Friseur-Termin: ${appointment.service}`)}`,
+    `LOCATION:${escapeIcs(`${SALON.address}, ${SALON.city}`)}`,
     `DESCRIPTION:${description}`,
     "STATUS:CONFIRMED",
     "BEGIN:VALARM",
     "TRIGGER:-PT2H",
     "ACTION:DISPLAY",
-    `DESCRIPTION:Erinnerung – Friseur-Termin bei ${escapeICS(SALON.name)}`,
+    `DESCRIPTION:Erinnerung – Friseur-Termin bei ${escapeIcs(SALON.name)}`,
     "END:VALARM",
     "END:VEVENT",
     "END:VCALENDAR",
@@ -766,7 +740,7 @@ async function sendDailyDigestEmail(appointments, today) {
   const result = { sent: false, sentAt: null, error: null };
 
   try {
-    const { error } = await resend.emails.send({
+    const { error } = await sendWithRetry(resend,{
       from: config.from,
       to: config.salonEmail,
       subject: mail.subject,
@@ -918,7 +892,7 @@ async function sendAppointmentEmails(appointment, baseUrl) {
 
   // 1. Kunden-Eingangs-Mail (sofort)
   try {
-    const { error } = await resend.emails.send({
+    const { error } = await sendWithRetry(resend,{
       from: config.from,
       to: appointment.email,
       replyTo: config.replyTo,
@@ -936,7 +910,7 @@ async function sendAppointmentEmails(appointment, baseUrl) {
 
   // 2. Salon-Benachrichtigung (sofort)
   try {
-    const { error } = await resend.emails.send({
+    const { error } = await sendWithRetry(resend,{
       from: config.from,
       to: config.salonEmail,
       replyTo: appointment.email,
@@ -990,7 +964,7 @@ async function sendConfirmationEmail(appointment, baseUrl) {
   // 1. Bestaetigungs-Mail (mit ICS-Anhang -- ein Klick und der Termin
   //    steht im Kalender des Kunden, inkl. 2h-Vorab-Erinnerung)
   try {
-    const { error } = await resend.emails.send({
+    const { error } = await sendWithRetry(resend,{
       from: config.from,
       to: appointment.email,
       replyTo: config.replyTo,
@@ -1014,7 +988,7 @@ async function sendConfirmationEmail(appointment, baseUrl) {
   } else {
     try {
       const reminderMail = buildReminderEmail(appointment, effectiveBaseUrl);
-      const { data, error } = await resend.emails.send({
+      const { data, error } = await sendWithRetry(resend,{
         from: config.from,
         to: appointment.email,
         replyTo: config.replyTo,
@@ -1052,7 +1026,7 @@ async function sendDeclineEmail(appointment, baseUrl) {
   const declineMail = buildDeclineEmail(appointment, effectiveBaseUrl);
 
   try {
-    const { error } = await resend.emails.send({
+    const { error } = await sendWithRetry(resend,{
       from: config.from,
       to: appointment.email,
       replyTo: config.replyTo,
@@ -1105,7 +1079,7 @@ async function sendAdminCancellationEmail(appointment, baseUrl) {
   // 2. Kunden informieren
   const mail = buildAdminCancellationEmail(appointment, effectiveBaseUrl);
   try {
-    const { error } = await resend.emails.send({
+    const { error } = await sendWithRetry(resend,{
       from: config.from,
       to: appointment.email,
       replyTo: config.replyTo,
@@ -1158,7 +1132,7 @@ async function sendCancellationEmail(appointment) {
   // 2. Salon informieren
   try {
     const mail = buildCancellationEmail(appointment);
-    const { error } = await resend.emails.send({
+    const { error } = await sendWithRetry(resend,{
       from: config.from,
       to: config.salonEmail,
       replyTo: appointment.email,
@@ -1175,6 +1149,46 @@ async function sendCancellationEmail(appointment) {
   }
 
   return result;
+}
+
+/**
+ * Erkennt transiente Fehler (Netzwerk, 5xx, Rate-Limit), bei denen
+ * ein Retry sinnvoll ist. 4xx-Fehler wie "invalid_from" oder
+ * "validation_error" sind permanent und werden NICHT geretryt.
+ */
+function isTransientMailError(error) {
+  const name = error?.name || "";
+  const message = String(error?.message || error || "");
+  const combined = `${name} ${message}`;
+  return /5\d\d|rate.?limit|too.many.requests|ECONNRESET|ETIMEDOUT|ENOTFOUND|ECONNREFUSED|fetch failed|network/i.test(
+    combined
+  );
+}
+
+/**
+ * Schickt eine Mail via Resend mit 1 automatischem Retry bei
+ * transienten Fehlern. Pause zwischen Versuchen 800ms (Resend-typische
+ * Rate-Limit-Reset-Zeit).
+ *
+ * Permanente Fehler (4xx wie ungueltige Empfaenger-Adresse) werden
+ * direkt durchgereicht -- Retry wuerde nur den selben Fehler nochmal
+ * produzieren.
+ */
+async function sendWithRetry(client, params) {
+  try {
+    const result = await client.emails.send(params);
+    if (result.error && isTransientMailError(result.error)) {
+      await new Promise((r) => setTimeout(r, 800));
+      return client.emails.send(params);
+    }
+    return result;
+  } catch (err) {
+    if (isTransientMailError(err)) {
+      await new Promise((r) => setTimeout(r, 800));
+      return client.emails.send(params);
+    }
+    throw err;
+  }
 }
 
 /**
@@ -1224,5 +1238,19 @@ module.exports = {
   sendDailyDigestEmail,
   isEmailConfigured,
   getMailConfig,
-  SALON,
+  // Fuer Tests exportiert; nicht in Routen verwenden.
+  __testables: {
+    buildICSAttachment,
+    germanLocalToISOString,
+    getReminderTime,
+    mapEmailError,
+    buildCustomerEmail,
+    buildReminderEmail,
+    buildConfirmedEmail,
+    buildDeclineEmail,
+    buildAdminCancellationEmail,
+    buildSalonEmail,
+    buildCancellationEmail,
+    buildDailyDigestEmail,
+  },
 };
