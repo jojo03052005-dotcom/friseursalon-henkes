@@ -30,6 +30,8 @@ const logger = require("./lib/logger");
 const { runStartupCheck } = require("./lib/startup-check");
 const storage = require("./lib/storage");
 const backup = require("./lib/backup");
+const db = require("./lib/db");
+const migrate = require("./lib/migrate");
 const { isEmailConfigured } = require("./services/emailService");
 
 const publicRouter = require("./routes/public");
@@ -203,50 +205,63 @@ const server = app.listen(PORT, () => {
  * damit der Operator in den Render-Logs sieht was passierte.
  */
 async function runBootDiagnostics() {
-  // 1. Storage-Writability
+  // 0. Engine-Mode log
+  log.info("storage_engine", { engine: storage.ENGINE });
+
+  // 1. Storage-Writability (Postgres-Ping oder File-Probe)
   try {
     const result = await storage.checkWritable();
     log.info("storage_writable", result);
     if (!result.persistent && process.env.NODE_ENV === "production") {
       log.warn("storage_ephemeral_in_production", {
         message:
-          "HENKES_DATA_DIR not set -- using ephemeral filesystem. Bookings WILL be lost on every deploy/restart. Attach a Render Disk and set HENKES_DATA_DIR=/var/data/henkes.",
+          "Neither DATABASE_URL nor HENKES_DATA_DIR set -- using ephemeral filesystem. Bookings WILL be lost on every deploy/restart. Set DATABASE_URL (Neon Postgres) or attach a Render Disk.",
       });
     }
   } catch (err) {
     log.error("storage_not_writable", {
-      path: storage.DATA_DIR,
+      engine: storage.ENGINE,
       error: err.message,
-      hint: "Check Render Disk mount + permissions. Server will continue but bookings will fail.",
+      hint:
+        storage.ENGINE === "postgres"
+          ? "DB unreachable. Check DATABASE_URL and Neon project status."
+          : "Check disk mount + permissions.",
     });
   }
 
-  // 2. appointments.json Integritaets-Check + Auto-Recovery
+  // 2. JSON->DB Migration (no-op in JSON mode oder wenn DB schon Daten hat)
+  if (db.IS_ENABLED) {
+    const importResult = await migrate.maybeImportFromJson();
+    log.info("appointments_import", importResult);
+    const closedResult = await migrate.maybeImportClosedDays();
+    log.info("closed_days_import", closedResult);
+  }
+
+  // 3. Integritaets-Check + Auto-Recovery (Auto-Recovery nur im JSON-Mode)
   const fileCheck = await storage.checkAppointmentsFile();
   if (fileCheck.healthy) {
     log.info("appointments_file_ok", {
+      engine: storage.ENGINE,
       exists: fileCheck.exists,
       count: fileCheck.count,
     });
   } else {
     log.error("appointments_file_corrupted", {
+      engine: storage.ENGINE,
       error: fileCheck.error,
       code: fileCheck.code,
-      action: "attempting auto-recovery from latest valid backup",
+      action:
+        storage.ENGINE === "json"
+          ? "attempting auto-recovery from latest valid backup"
+          : "investigate DB connectivity",
     });
-    const recovery = await storage.recoverFromBackup();
-    if (recovery.restored) {
-      log.warn("auto_recovery_success", {
-        from: recovery.from,
-        message:
-          "Server recovered from backup. Operator should investigate the original corruption.",
-      });
-    } else {
-      log.error("auto_recovery_failed", {
-        reason: recovery.reason,
-        action:
-          "Continuing with empty appointments list. Manual intervention required.",
-      });
+    if (storage.ENGINE === "json") {
+      const recovery = await storage.recoverFromBackup();
+      if (recovery.restored) {
+        log.warn("auto_recovery_success", { from: recovery.from });
+      } else {
+        log.error("auto_recovery_failed", { reason: recovery.reason });
+      }
     }
   }
 }
@@ -274,10 +289,18 @@ function gracefulShutdown(signal) {
   }, 10000);
   forceTimer.unref();
 
-  server.close((err) => {
+  server.close(async (err) => {
     if (err) {
       log.error("shutdown_error", { error: String(err.message || err) });
       process.exit(1);
+    }
+    // DB-Pool sauber schliessen damit laufende Queries noch zu Ende koennen.
+    if (db.IS_ENABLED) {
+      try {
+        await db.close();
+      } catch (dbErr) {
+        log.warn("db_close_error", { error: String(dbErr.message || dbErr) });
+      }
     }
     log.info("shutdown_complete", {});
     process.exit(0);

@@ -43,6 +43,7 @@ router.get("/health", async (_req, res) => {
       writable: false,
       path: storage.DATA_DIR,
       persistent: storage.IS_PERSISTENT,
+      engine: storage.ENGINE,
     },
     appointmentsFile: { healthy: false, exists: false, count: 0 },
     backup: backup.status(),
@@ -98,7 +99,7 @@ router.get("/health", async (_req, res) => {
       level: "warn",
       area: "storage",
       message:
-        "HENKES_DATA_DIR not set -- using ephemeral storage. Bookings will be lost on every Render deploy/restart. Attach a Render Disk and set HENKES_DATA_DIR.",
+        "Neither DATABASE_URL nor HENKES_DATA_DIR set -- using ephemeral storage. Bookings will be lost on every Render deploy/restart. Set DATABASE_URL (Neon Postgres free) or attach a Render Disk.",
     });
   }
   if (!report.emailConfigured) {
