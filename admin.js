@@ -545,7 +545,38 @@ if (searchEl) {
       renderRows(lastAppointments);
     }, 150);
   });
+  // ESC im Suchfeld -> Inhalt loeschen und Re-Render. Praktisch wenn
+  // der Operator schnell zurueck zur Vollansicht moechte.
+  searchEl.addEventListener("keydown", (event) => {
+    if (event.key === "Escape" && searchEl.value) {
+      searchEl.value = "";
+      currentSearch = "";
+      renderRows(lastAppointments);
+    }
+  });
 }
+
+// Globale Shortcuts:
+//   /  -> Fokus aufs Suchfeld (wie GitHub / Gmail)
+//   r  -> Refresh (wie ein Browser-Reload, aber nur die Liste)
+// Beide nur wenn der Operator nicht gerade in einem Input/Textarea tippt.
+document.addEventListener("keydown", (event) => {
+  const target = event.target;
+  const isTyping =
+    target &&
+    (target.tagName === "INPUT" ||
+      target.tagName === "TEXTAREA" ||
+      target.isContentEditable);
+  if (isTyping) return;
+  if (event.key === "/" && searchEl) {
+    event.preventDefault();
+    searchEl.focus();
+    searchEl.select();
+  } else if (event.key === "r" || event.key === "R") {
+    event.preventDefault();
+    loadAppointments();
+  }
+});
 
 refreshBtn.addEventListener("click", loadAppointments);
 loadAppointments();
