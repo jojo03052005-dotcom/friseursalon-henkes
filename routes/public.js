@@ -12,7 +12,13 @@
 
 const express = require("express");
 
-const { ALLOWED_SERVICES } = require("../lib/config");
+const {
+  ALLOWED_SERVICES,
+  SERVICES,
+  SALON,
+  SALON_HOURS,
+  MAX_BOOKING_HORIZON_DAYS,
+} = require("../lib/config");
 const storage = require("../lib/storage");
 const backup = require("../lib/backup");
 const { isEmailConfigured } = require("../services/emailService");
@@ -143,6 +149,49 @@ router.get("/health", async (_req, res) => {
 router.get("/services", (_req, res) => {
   res.set("Cache-Control", "public, max-age=300"); // 5 Min cache
   res.json({ success: true, services: ALLOWED_SERVICES });
+});
+
+/**
+ * Salon-Metadaten fuer das Frontend: Stunden, Services mit Dauer,
+ * Adresse, Buchungs-Horizont. Liefert genau das, was der Browser
+ * braucht, um Live-Oeffnungsstatus und Buchungs-Hints ohne Code-
+ * Duplizierung zu rendern.
+ *
+ * Cache-freundlich (5 Min), da Salon-Daten zur Laufzeit sich nicht
+ * aendern -- ein Deploy bricht den Cache eh.
+ *
+ * Bewusst KEINE Geheimnisse (kein Mail-Key, kein DB-Pfad).
+ */
+router.get("/salon", (_req, res) => {
+  res.set("Cache-Control", "public, max-age=300");
+
+  // Hours als {0..6: {open:"HH:MM", close:"HH:MM"}} -- string-Form ist
+  // direkt anzeigbar, keine Frontend-Minuten-Mathematik noetig.
+  const fmt = (mins) =>
+    `${String(Math.floor(mins / 60)).padStart(2, "0")}:${String(mins % 60).padStart(2, "0")}`;
+  const hours = {};
+  for (const [day, slot] of Object.entries(SALON_HOURS)) {
+    hours[day] = { open: fmt(slot.open), close: fmt(slot.close) };
+  }
+
+  res.json({
+    success: true,
+    salon: {
+      name: SALON.name,
+      phone: SALON.phone,
+      address: SALON.address,
+      city: SALON.city,
+      country: SALON.country,
+    },
+    services: SERVICES.map((s) => ({
+      name: s.name,
+      durationMinutes: s.durationMinutes,
+    })),
+    hours,
+    booking: {
+      maxHorizonDays: MAX_BOOKING_HORIZON_DAYS,
+    },
+  });
 });
 
 module.exports = router;

@@ -196,6 +196,47 @@ test("GET /api/services -> 200 with the 5 services", async () => {
   assert.match(r.headers["cache-control"] || "", /max-age=300/);
 });
 
+test("GET /api/salon -> 200 with hours, services+durations, salon meta", async () => {
+  const r = await request("GET", "/api/salon");
+  assert.equal(r.status, 200);
+  assert.equal(r.json.success, true);
+
+  // Salon-Stammdaten ohne Geheimnisse
+  assert.equal(typeof r.json.salon?.name, "string");
+  assert.equal(typeof r.json.salon?.phone, "string");
+  assert.equal(typeof r.json.salon?.address, "string");
+
+  // Services mit Dauer pro Eintrag (fuer Frontend-Hints)
+  assert.ok(Array.isArray(r.json.services));
+  assert.ok(r.json.services.length >= 1);
+  for (const s of r.json.services) {
+    assert.equal(typeof s.name, "string");
+    assert.equal(typeof s.durationMinutes, "number");
+    assert.ok(s.durationMinutes > 0);
+  }
+
+  // Hours als Map(weekday-int -> {open,close} im HH:MM-Format)
+  assert.equal(typeof r.json.hours, "object");
+  // Default-Salon: Di (2) - Fr (5) + Sa (6) offen; So/Mo (0/1) zu.
+  assert.equal(r.json.hours["0"], undefined, "Sonntag muss zu sein");
+  assert.equal(r.json.hours["1"], undefined, "Montag muss zu sein");
+  assert.ok(r.json.hours["2"], "Dienstag muss offen sein");
+  assert.match(r.json.hours["2"].open, /^\d{2}:\d{2}$/);
+  assert.match(r.json.hours["2"].close, /^\d{2}:\d{2}$/);
+
+  // Buchungs-Horizont (fuer Frontend-Hinweis "max 90 Tage im Voraus")
+  assert.equal(typeof r.json.booking?.maxHorizonDays, "number");
+
+  // Cacheable (5 Min) -- der Browser darf antwort wiederverwenden
+  assert.match(r.headers["cache-control"] || "", /max-age=300/);
+
+  // Keine Geheimnisse durchgesickert
+  const body = JSON.stringify(r.json);
+  assert.equal(body.includes("RESEND_API_KEY"), false);
+  assert.equal(body.includes("DATABASE_URL"), false);
+  assert.equal(body.includes("ADMIN_PASSWORD"), false);
+});
+
 /* ---------------- Booking ---------------- */
 
 function futureTuesday() {
