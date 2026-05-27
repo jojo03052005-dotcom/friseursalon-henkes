@@ -65,9 +65,16 @@ router.get("/health", async (_req, res) => {
     warnings: [],
   };
 
+  // Per-Subsystem-Timings: hilft im Render-Log zu sehen, ob z.B.
+  // Postgres-Ping ploetzlich auf 800ms hochgeht (Indikator fuer
+  // Neon-Cold-Start oder Netzwerk-Aerger). Frueher hatten wir nur
+  // checkDurationMs als Gesamt-Zeit -- jetzt sehen wir wo's klemmt.
+  report.timings = {};
+
   // 1. Storage-Writability-Probe (kleine Datei in DATA_DIR rein/raus).
   //    Faengt ein gemounteter aber read-only Disk oder ein Permissions-
   //    Problem direkt ab.
+  const tStorage = Date.now();
   try {
     Object.assign(report.storage, await storage.checkWritable());
   } catch (err) {
@@ -79,8 +86,10 @@ router.get("/health", async (_req, res) => {
       message: `DATA_DIR not writable: ${err.message}`,
     });
   }
+  report.timings.storageMs = Date.now() - tStorage;
 
   // 2. Termin-Datei: existiert sie + valide JSON?
+  const tFile = Date.now();
   try {
     Object.assign(report.appointmentsFile, await storage.checkAppointmentsFile());
     if (!report.appointmentsFile.healthy) {
@@ -98,6 +107,7 @@ router.get("/health", async (_req, res) => {
       message: err.message,
     });
   }
+  report.timings.appointmentsCheckMs = Date.now() - tFile;
 
   // 3. Memory (cheap)
   const mem = process.memoryUsage();

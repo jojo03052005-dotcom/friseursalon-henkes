@@ -448,6 +448,16 @@ restoreFormDraft();
 if (bookingForm) {
   let saveTimer = null;
   bookingForm.addEventListener("input", () => {
+    // Stale Error-/Success-Feedback ausblenden, sobald der Kunde
+    // wieder tippt -- sonst steht der alte "E-Mail ist ungueltig"-
+    // Hinweis noch da, waehrend man korrigiert.
+    if (formMessage && (
+      formMessage.classList.contains("is-error") ||
+      formMessage.classList.contains("is-success")
+    )) {
+      formMessage.classList.remove("is-error", "is-success");
+      formMessage.textContent = "";
+    }
     if (saveTimer) clearTimeout(saveTimer);
     saveTimer = setTimeout(saveFormDraft, 500);
   });

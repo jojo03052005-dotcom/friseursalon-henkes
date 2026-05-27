@@ -185,6 +185,12 @@ test("GET /api/health -> 200 with operational status", async () => {
   assert.equal(typeof r.json.memory, "object");
   assert.ok(Array.isArray(r.json.warnings));
   assert.ok(typeof r.json.version === "string");
+  // Per-Subsystem-Timings (storage + appointments check); helfen
+  // Ops zu sehen, welcher Teil eines langsamen Health-Calls schuld ist.
+  assert.equal(typeof r.json.timings, "object");
+  assert.equal(typeof r.json.timings.storageMs, "number");
+  assert.equal(typeof r.json.timings.appointmentsCheckMs, "number");
+  assert.ok(r.json.timings.storageMs >= 0);
 });
 
 test("GET /api/services -> 200 with the 5 services", async () => {
