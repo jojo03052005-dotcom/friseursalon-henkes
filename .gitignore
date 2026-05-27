@@ -10,5 +10,15 @@ Git/
 .vscode/
 .idea/
 
-# Temporäre Datei vom atomic-write in writeAppointments()
+# Termin-Daten enthalten Kunden-PII (Name, Telefon, E-Mail) und
+# duerfen NIE in git landen -- weder lokale Dev-Bookings noch
+# Production. data/closed-days.json bleibt absichtlich verfolgt
+# (Feiertags-Kalender, kein PII).
+data/appointments.json
 data/appointments.json.tmp
+data/backups/
+
+# Lokale Server-Logs (start.bat redirected nach hier).
+*.log
+server.err.log
+server.out.log
