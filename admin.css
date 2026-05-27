@@ -66,6 +66,22 @@
   font-weight: 600;
 }
 
+/*
+ * Quick-Glance-Stats unter der admin-meta: "X heute · Y in den
+ * naechsten 7 Tagen". Sticht visuell raus (gold) damit der
+ * Operator beim Page-Open sofort die Tagesplanung sieht.
+ */
+.admin-stats {
+  margin: 6px 0 0;
+  color: var(--brown, #4b3028);
+  font-size: 14px;
+  font-weight: 500;
+}
+.admin-stats strong {
+  color: var(--gold-dark, #8b6611);
+  font-weight: 700;
+}
+
 .admin-alert {
   margin: 0 0 20px;
   padding: 14px 16px;

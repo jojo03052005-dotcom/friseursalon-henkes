@@ -34,6 +34,12 @@
       <p class="section-kicker">Admin</p>
       <h1>Alle Terminanfragen</h1>
       <p class="admin-meta" data-admin-meta>Lade Termine …</p>
+      <!--
+        Quick-Glance-Stats: Heute / Diese Woche / aktive Termine.
+        Aktive = pending + confirmed (also alles was nicht storniert
+        oder abgelehnt ist). Vom Skript befuellt; bei 0 versteckt.
+      -->
+      <p class="admin-stats" data-admin-stats hidden></p>
     </section>
 
     <p class="admin-alert" role="alert" data-admin-alert hidden></p>

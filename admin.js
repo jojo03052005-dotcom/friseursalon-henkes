@@ -8,6 +8,7 @@
  */
 
 const metaEl = document.querySelector("[data-admin-meta]");
+const statsEl = document.querySelector("[data-admin-stats]");
 const alertEl = document.querySelector("[data-admin-alert]");
 const tbody = document.querySelector("[data-appointments-body]");
 const refreshBtn = document.querySelector("[data-refresh]");
@@ -314,6 +315,57 @@ const renderRows = (appointments) => {
   if (counts.declined > 0) segments.push(`${counts.declined} abgelehnt`);
   if (counts.cancelled > 0) segments.push(`${counts.cancelled} storniert`);
   metaEl.textContent = segments.join(" · ") || `${appointments.length} Termine`;
+
+  renderStats(appointments);
+};
+
+/**
+ * Quick-Glance-Stats: zaehlt aktive Termine fuer "heute" und
+ * "diese Woche" (ab heute, +7 Tage). Aktive = pending oder
+ * confirmed -- storniert/abgelehnt ist fuer den Salon irrelevant.
+ *
+ * Gibt dem Operator beim Page-Open auf einen Blick: "wie viel ist
+ * los?" ohne durch die Liste scrollen zu muessen.
+ */
+const renderStats = (appointments) => {
+  if (!statsEl) return;
+  const todayIso = new Date().toISOString().slice(0, 10);
+  const in7Days = new Date();
+  in7Days.setDate(in7Days.getDate() + 7);
+  const in7DaysIso = in7Days.toISOString().slice(0, 10);
+
+  let today = 0;
+  let week = 0;
+  let confirmedToday = 0;
+
+  for (const a of appointments) {
+    if (a.cancelled || a.declined) continue;
+    if (!a.date) continue;
+    if (a.date === todayIso) {
+      today += 1;
+      if (a.confirmed) confirmedToday += 1;
+    }
+    if (a.date >= todayIso && a.date <= in7DaysIso) {
+      week += 1;
+    }
+  }
+
+  if (today === 0 && week === 0) {
+    statsEl.hidden = true;
+    statsEl.textContent = "";
+    return;
+  }
+
+  const parts = [];
+  if (today > 0) {
+    const todayLabel = confirmedToday === today
+      ? `<strong>${today}</strong> heute`
+      : `<strong>${today}</strong> heute (davon ${confirmedToday} bestätigt)`;
+    parts.push(todayLabel);
+  }
+  if (week > 0) parts.push(`<strong>${week}</strong> in den nächsten 7 Tagen`);
+  statsEl.innerHTML = parts.join(" · ");
+  statsEl.hidden = false;
 };
 
 const loadAppointments = async () => {
