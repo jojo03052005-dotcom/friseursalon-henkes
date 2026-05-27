@@ -71,6 +71,17 @@ nav.addEventListener("click", (event) => {
   }
 });
 
+// A11y: ESC schliesst die mobile Nav. Tastatur-Nutzer und Screen-Reader
+// erwarten das. Triggert nur wenn Nav offen ist, sonst stoeren wir nicht.
+document.addEventListener("keydown", (event) => {
+  if (event.key === "Escape" && nav.classList.contains("is-open")) {
+    nav.classList.remove("is-open");
+    navToggle.setAttribute("aria-expanded", "false");
+    navToggle.setAttribute("aria-label", "Navigation öffnen");
+    navToggle.focus();
+  }
+});
+
 const revealObserver = new IntersectionObserver(
   (entries) => {
     entries.forEach((entry) => {
@@ -663,6 +674,15 @@ bookingForm.addEventListener("submit", async (event) => {
       bookingForm.reset();
       setMinBookingDate();
       clearFormDraft();
+
+      // Erfolgs-Message in den Viewport scrollen -- bei mobile wird
+      // der Submit-Button nach dem Form-Reset eingeschoben und der Kunde
+      // koennte den gruenen Hint sonst nicht direkt sehen. "smooth"
+      // ist nicht aggressiv und respektiert prefers-reduced-motion via
+      // den nativen Browser-Settings.
+      if (formMessage?.scrollIntoView) {
+        formMessage.scrollIntoView({ behavior: "smooth", block: "center" });
+      }
       success = true;
       break;
     } catch (error) {
