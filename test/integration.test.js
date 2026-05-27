@@ -439,10 +439,16 @@ test("GET /api/cron/daily-digest mit falschem secret -> 401", async () => {
   assert.equal(r.status, 401);
 });
 
-test("GET /api/cron/daily-digest mit korrektem secret -> 503 (mail not configured)", async () => {
+test("GET /api/cron/daily-digest mit korrektem secret -> entweder skipped (So/Mo) oder 503 (mail not configured)", async () => {
   const r = await request("GET", "/api/cron/daily-digest?secret=test-cron-secret");
-  // E-Mail ist nicht konfiguriert -> 503
-  assert.equal(r.status, 503);
+  // Je nach Wochentag: an Ruhetagen 200 mit skipped:true, sonst 503
+  // (E-Mail nicht konfiguriert).
+  if (r.status === 200) {
+    assert.equal(r.json.skipped, true);
+    assert.match(r.json.reason, /closed/);
+  } else {
+    assert.equal(r.status, 503);
+  }
 });
 
 /* ---------------- Storno-Flow ---------------- */

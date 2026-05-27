@@ -13,6 +13,7 @@ const express = require("express");
 
 const { safeStringEqual } = require("../lib/auth");
 const { readAll } = require("../lib/storage");
+const { SALON_HOURS } = require("../lib/config");
 const { asyncHandler } = require("../lib/async-handler");
 const logger = require("../lib/logger").child("cron");
 
@@ -54,6 +55,27 @@ router.get(
       month: "2-digit",
       day: "2-digit",
     }).format(new Date());
+
+    // Salon-Ruhetag (So/Mo): keine Tagesuebersicht versenden, sonst
+    // kriegt der Salon jeden Sonntag/Montag eine "0 Termine"-Mail.
+    // Cron-Job-Ping bleibt trotzdem hilfreich (haelt Server warm),
+    // wir antworten 200 mit skipped:true.
+    // Berlin-Wochentag via Intl ableiten (sicher gegen Server-TZ).
+    const berlinWeekday = new Date(`${todayBerlin}T12:00:00Z`).getUTCDay();
+    const isOpenDay = Boolean(SALON_HOURS[berlinWeekday]);
+
+    if (!isOpenDay) {
+      logger.info("daily_digest_skipped_closed_day", {
+        today: todayBerlin,
+        weekday: berlinWeekday,
+      });
+      return res.json({
+        success: true,
+        skipped: true,
+        reason: "salon closed today (Sun/Mon)",
+        today: todayBerlin,
+      });
+    }
 
     const todays = appointments.filter(
       (item) =>
